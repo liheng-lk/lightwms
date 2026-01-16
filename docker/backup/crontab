@@ -1,0 +1,12 @@
+# LightWMS Backup Crontab
+# Run daily backup at 2:00 AM
+0 2 * * * /scripts/backup.sh daily >> /var/log/backup.log 2>&1
+
+# Run weekly backup on Sunday at 3:00 AM
+0 3 * * 0 /scripts/backup.sh weekly >> /var/log/backup.log 2>&1
+
+# Run monthly backup on the 1st of each month at 4:00 AM
+0 4 1 * * /scripts/backup.sh monthly >> /var/log/backup.log 2>&1
+
+# Cleanup old backups daily at 5:00 AM
+0 5 * * * /scripts/backup.sh cleanup >> /var/log/backup.log 2>&1

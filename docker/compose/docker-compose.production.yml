@@ -1,0 +1,139 @@
+# LightWMS Production Docker Compose
+# 使用统一镜像部署
+
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: lightwms-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-lightwms}
+      POSTGRES_USER: ${POSTGRES_USER:-lightwms}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lightwms_secret}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lightwms} -d ${POSTGRES_DB:-lightwms}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - lightwms-network
+    # 不暴露端口到外部，仅内部访问
+    # ports:
+    #   - "5432:5432"
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: lightwms-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lightwms-network
+
+  # LightWMS Application (Frontend + Backend + Nginx)
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.unified
+    image: lightwms:latest
+    container_name: lightwms-app
+    restart: unless-stopped
+    environment:
+      # Django settings
+      - DJANGO_SETTINGS_MODULE=config.settings.production
+      - SECRET_KEY=${SECRET_KEY}
+      - DEBUG=False
+      # Database
+      - POSTGRES_DB=${POSTGRES_DB:-lightwms}
+      - POSTGRES_USER=${POSTGRES_USER:-lightwms}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-lightwms_secret}
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+      # Redis
+      - REDIS_URL=redis://redis:6379/0
+      # Security
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost}
+      - SECURE_SSL_REDIRECT=${SECURE_SSL_REDIRECT:-False}
+      - CSRF_TRUSTED_ORIGINS=${CSRF_TRUSTED_ORIGINS:-http://localhost}
+      # Next.js
+      - BACKEND_URL=http://127.0.0.1:8000
+      # Optional: Create superuser on first run
+      - CREATE_SUPERUSER=${CREATE_SUPERUSER:-false}
+      - DJANGO_SUPERUSER_USERNAME=${DJANGO_SUPERUSER_USERNAME:-admin}
+      - DJANGO_SUPERUSER_PASSWORD=${DJANGO_SUPERUSER_PASSWORD:-admin123}
+      - DJANGO_SUPERUSER_EMAIL=${DJANGO_SUPERUSER_EMAIL:-admin@example.com}
+    volumes:
+      - media_data:/app/backend/media
+      - static_data:/app/backend/staticfiles
+      - logs_data:/var/log/lightwms
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - lightwms-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Backup Service (optional, use --profile backup to enable)
+  backup:
+    image: postgres:15-alpine
+    container_name: lightwms-backup
+    restart: unless-stopped
+    profiles:
+      - backup
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-lightwms}
+      POSTGRES_USER: ${POSTGRES_USER:-lightwms}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lightwms_secret}
+      POSTGRES_HOST: db
+      PGPASSWORD: ${POSTGRES_PASSWORD:-lightwms_secret}
+    volumes:
+      - ./scripts:/scripts:ro
+      - ./backup/crontab:/etc/crontabs/root:ro
+      - backup_data:/backups
+    entrypoint: ["/bin/sh", "-c", "crond -f -l 2"]
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - lightwms-network
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  media_data:
+    driver: local
+  static_data:
+    driver: local
+  logs_data:
+    driver: local
+  backup_data:
+    driver: local
+
+networks:
+  lightwms-network:
+    driver: bridge

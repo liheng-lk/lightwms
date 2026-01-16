@@ -1,0 +1,133 @@
+# LightWMS 统一镜像 - 前端 + 后端 + Nginx
+# Multi-stage build for production deployment
+
+# ============================================
+# Stage 1: Frontend Build
+# ============================================
+FROM node:20-alpine AS frontend-builder
+
+WORKDIR /frontend
+
+# 使用淘宝 npm 镜像加速
+RUN npm config set registry https://registry.npmmirror.com
+
+# Install dependencies first (for better caching)
+COPY frontend/package*.json ./
+RUN npm ci --legacy-peer-deps
+
+# Copy source and build
+COPY frontend/ ./
+
+# Build Next.js in standalone mode
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_ENV=production
+ENV BUILD_STANDALONE=true
+
+# 跳过类型生成失败（CI 模式）
+RUN npm run build:ci
+
+# ============================================
+# Stage 2: Backend Build
+# ============================================
+FROM python:3.11-slim AS backend-builder
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+WORKDIR /backend
+
+# 使用清华源加速
+RUN sed -i 's/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list.d/debian.sources
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# 使用清华 pip 源
+RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+
+# Install Python dependencies
+COPY backend/requirements.txt .
+RUN pip wheel --no-cache-dir --no-deps --wheel-dir /backend/wheels -r requirements.txt
+
+# ============================================
+# Stage 3: Production Image
+# ============================================
+FROM python:3.11-slim AS production
+
+# Environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    DJANGO_SETTINGS_MODULE=config.settings.production \
+    NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1
+
+WORKDIR /app
+
+# 使用清华源加速
+RUN sed -i 's/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list.d/debian.sources
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    libvips42 \
+    libvips-dev \
+    nginx \
+    supervisor \
+    curl \
+    ca-certificates \
+    gnupg \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Install Node.js 20.x for Next.js standalone server
+RUN mkdir -p /etc/apt/keyrings \
+    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list \
+    && apt-get update \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN groupadd --gid 1000 appgroup \
+    && useradd --uid 1000 --gid appgroup --shell /bin/bash --create-home appuser
+
+# Copy Python wheels and install
+COPY --from=backend-builder /backend/wheels /wheels
+RUN pip install --no-cache-dir /wheels/* && rm -rf /wheels
+
+# Copy backend code
+COPY --chown=appuser:appgroup backend/ /app/backend/
+
+# Copy frontend standalone build
+COPY --from=frontend-builder --chown=appuser:appgroup /frontend/.next/standalone /app/frontend/
+COPY --from=frontend-builder --chown=appuser:appgroup /frontend/.next/static /app/frontend/.next/static
+COPY --from=frontend-builder --chown=appuser:appgroup /frontend/public /app/frontend/public
+
+# Create necessary directories with proper permissions
+RUN mkdir -p /var/log/lightwms /var/log/supervisor /var/log/nginx /run/nginx \
+    /app/backend/staticfiles /app/backend/media \
+    && chown -R appuser:appgroup /var/log/lightwms /app/backend/staticfiles /app/backend/media \
+    && chown -R www-data:www-data /var/log/nginx /run/nginx \
+    && chmod 755 /var/log/lightwms /var/log/supervisor
+
+# Copy configuration files
+COPY deploy/nginx.conf /etc/nginx/nginx.conf
+COPY deploy/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY deploy/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Expose ports
+EXPOSE 80
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost/health || exit 1
+
+# Start services
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["supervisord", "-n", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
