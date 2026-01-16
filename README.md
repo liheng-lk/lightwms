@@ -57,7 +57,7 @@ lightwms/
 
 ```bash
 # 1. 克隆项目
-git clone https://github.com/你的用户名/lightwms.git
+git clone https://github.com/liheng-lk/lightwms.git
 cd lightwms
 
 # 2. 复制环境变量
@@ -137,4 +137,4 @@ npm run dev
 
 ## 📧 联系
 
-如有问题，请通过 [Issues](https://github.com/你的用户名/lightwms/issues) 联系。
+如有问题，请通过 [Issues](https://github.com/liheng-lk/lightwms/issues) 联系。
