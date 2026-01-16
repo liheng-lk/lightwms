@@ -40,7 +40,7 @@
 
 ```bash
 # 克隆仓库
-git clone https://github.com/你的用户名/lightwms.git
+git clone https://github.com/liheng-lk/lightwms.git
 cd lightwms
 
 # 后端
