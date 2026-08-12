@@ -1,5 +1,5 @@
 """Input-contract and presentation wrappers for inventory endpoints."""
-from rest_framework import status
+from rest_framework import serializers, status
 from rest_framework.response import Response
 
 from core.pagination import StandardPagination
@@ -7,6 +7,28 @@ from core.pagination import StandardPagination
 from .permission_views import ItemListCreateView as HardenedItemListCreateView
 from .atomic_views import ItemCreateWithInvoiceView as AtomicItemCreateWithInvoiceView
 from .borrow_serializers import BorrowAwareItemSerializer, prefetch_active_borrows
+from .models import ItemStatus, ItemType
+
+
+class ItemListQuerySerializer(serializers.Serializer):
+    category = serializers.IntegerField(required=False, min_value=1)
+    location = serializers.IntegerField(required=False, min_value=1)
+    warehouse = serializers.IntegerField(required=False, min_value=1)
+    owner = serializers.IntegerField(required=False, min_value=1)
+    type = serializers.ChoiceField(required=False, choices=ItemType.choices)
+    status = serializers.ChoiceField(required=False, choices=ItemStatus.choices)
+    include_inactive = serializers.BooleanField(required=False)
+
+
+def _validation_error(errors):
+    return Response(
+        {
+            'code': 'VALIDATION_ERROR',
+            'message': 'Invalid inventory list parameters.',
+            'details': errors,
+        },
+        status=status.HTTP_400_BAD_REQUEST,
+    )
 
 
 def _validate_reusable_quantity(request):
@@ -44,31 +66,25 @@ def _validate_reusable_quantity(request):
 
 class ItemListCreateView(HardenedItemListCreateView):
     def get(self, request):
+        query = ItemListQuerySerializer(data=request.query_params)
+        if not query.is_valid():
+            return _validation_error(query.errors)
+        data = query.validated_data
+
         queryset = self.get_queryset()
 
-        category_id = request.query_params.get('category')
-        if category_id:
-            queryset = queryset.filter(category_id=category_id)
-
-        location_id = request.query_params.get('location')
-        if location_id:
-            queryset = queryset.filter(location_id=location_id)
-
-        warehouse_id = request.query_params.get('warehouse')
-        if warehouse_id:
-            queryset = queryset.filter(location__warehouse_id=warehouse_id)
-
-        item_type = request.query_params.get('type')
-        if item_type:
-            queryset = queryset.filter(type=item_type)
-
-        item_status = request.query_params.get('status')
-        if item_status:
-            queryset = queryset.filter(status=item_status)
-
-        owner_id = request.query_params.get('owner')
-        if owner_id and getattr(request.user, 'role', None) == 'super_admin':
-            queryset = queryset.filter(owner_id=owner_id)
+        if data.get('category') is not None:
+            queryset = queryset.filter(category_id=data['category'])
+        if data.get('location') is not None:
+            queryset = queryset.filter(location_id=data['location'])
+        if data.get('warehouse') is not None:
+            queryset = queryset.filter(location__warehouse_id=data['warehouse'])
+        if data.get('type'):
+            queryset = queryset.filter(type=data['type'])
+        if data.get('status'):
+            queryset = queryset.filter(status=data['status'])
+        if data.get('owner') is not None and getattr(request.user, 'role', None) == 'super_admin':
+            queryset = queryset.filter(owner_id=data['owner'])
 
         queryset = prefetch_active_borrows(queryset)
         paginator = StandardPagination()
