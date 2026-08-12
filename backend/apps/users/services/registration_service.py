@@ -23,6 +23,13 @@ class WechatOAuthResult(NamedTuple):
     nickname: str
 
 
+class RegistrationConflictError(ValidationError):
+    """Validation-shaped registration conflict with HTTP 409 semantics."""
+
+    status_code = 409
+    default_code = 'account_conflict'
+
+
 class RegistrationService:
     """Service for user registration via WeChat OAuth and invite codes."""
 
@@ -158,7 +165,7 @@ class RegistrationService:
                 })
 
             if User.objects.filter(wechat_openid=session.openid).exists():
-                raise ValidationError({
+                raise RegistrationConflictError({
                     'wechat_openid': 'This WeChat account is already registered.'
                 })
 
@@ -178,8 +185,8 @@ class RegistrationService:
                 )
             except IntegrityError as exc:
                 # Preserve transaction atomicity while exposing a stable API
-                # error for a concurrent username/phone/WeChat identity race.
-                raise ValidationError({
+                # conflict for a concurrent username/phone/WeChat identity race.
+                raise RegistrationConflictError({
                     'registration': 'Account identity is already registered.'
                 }) from exc
 
@@ -211,7 +218,7 @@ class RegistrationService:
                     is_active=True
                 )
             except IntegrityError as exc:
-                raise ValidationError({
+                raise RegistrationConflictError({
                     'registration': 'Account identity is already registered.'
                 }) from exc
 
@@ -220,9 +227,9 @@ class RegistrationService:
 
     def _validate_identity(self, username: str, phone: Optional[str] = None) -> None:
         if User.objects.filter(username=username).exists():
-            raise ValidationError({'username': 'This username is already taken.'})
+            raise RegistrationConflictError({'username': 'This username is already taken.'})
         if phone and User.objects.filter(phone=phone).exists():
-            raise ValidationError({'phone': 'This phone number is already registered.'})
+            raise RegistrationConflictError({'phone': 'This phone number is already registered.'})
 
     def _log_invite_use(self, invite_code: InviteCode, user: User) -> None:
         """Record a minimal invite-use audit without storing the invite secret."""
