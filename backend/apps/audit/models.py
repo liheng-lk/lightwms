@@ -124,8 +124,7 @@ class LoginLog(models.Model):
         ordering = ['-created_at']
         indexes = [
             models.Index(fields=['user', '-created_at']),
-            models.Index(fields=['ip']),
-            models.Index(fields=['created_at']),
+            models.Index(fields=['-created_at']),
         ]
 
     def __str__(self):
