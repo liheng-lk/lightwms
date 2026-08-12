@@ -4,6 +4,10 @@ URL configuration for inventory app.
 from django.urls import path
 
 from .views import (
+    ItemByBarcodeView,
+    SearchView,
+)
+from .reference_views import (
     WarehouseListCreateView,
     WarehouseDetailView,
     WarehouseDeactivateView,
@@ -19,8 +23,6 @@ from .views import (
     CategoryDeactivateView,
     CategoryDeleteView,
     CategoryBatchDeleteView,
-    ItemByBarcodeView,
-    SearchView,
 )
 from .permission_views import (
     ItemDetailView,
