@@ -10,7 +10,7 @@ from core.permissions import IsItemManagerOrSuperAdmin, IsSuperAdmin
 
 from .models import Invoice, InvoiceStatus
 from .services import InvoiceService
-from .views import (
+from .permission_views import (
     InvoiceListCreateView as BaseInvoiceListCreateView,
     InvoiceDetailView as BaseInvoiceDetailView,
     InvoiceBatchStatusUpdateView as BaseInvoiceBatchStatusUpdateView,
@@ -71,6 +71,7 @@ def _schedule_file_delete(file_path: str):
 
 
 class InvoiceListCreateView(BaseInvoiceListCreateView):
+    """Keep permission-scoped list/create behavior and harden item association."""
     permission_classes = [IsItemManagerOrSuperAdmin]
 
     def post(self, request):
@@ -85,10 +86,7 @@ class InvoiceListCreateView(BaseInvoiceListCreateView):
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
-            if (
-                request.user.role == UserRole.ITEM_MANAGER
-                and item.owner_id != request.user.id
-            ):
+            if request.user.role == UserRole.ITEM_MANAGER and item.owner_id != request.user.id:
                 # Do not disclose another manager's inventory existence.
                 return Response(
                     {'code': 'ITEM_NOT_FOUND', 'message': 'Associated item not found.', 'details': None},
@@ -99,7 +97,7 @@ class InvoiceListCreateView(BaseInvoiceListCreateView):
 
 
 class InvoiceDetailView(BaseInvoiceDetailView):
-    """Preserve scoped retrieve/update behavior and make DELETE audit semantic."""
+    """Preserve scoped GET/PATCH behavior and make deletion commit-safe/auditable."""
 
     @transaction.atomic
     def delete(self, request, pk):
@@ -109,20 +107,6 @@ class InvoiceDetailView(BaseInvoiceDetailView):
                 {'code': 'NOT_FOUND', 'message': 'Invoice not found.', 'details': None},
                 status=status.HTTP_404_NOT_FOUND,
             )
-
-        # Base view already contains scoped permission behavior for GET/PATCH;
-        # repeat the manager scope check here because deletion bypasses its
-        # service wrapper in order to make filesystem cleanup commit-safe.
-        if request.user.role == UserRole.ITEM_MANAGER:
-            visible = (
-                invoice.created_by_id == request.user.id
-                or (invoice.item_id and invoice.item.owner_id == request.user.id)
-            )
-            if not visible:
-                return Response(
-                    {'code': 'NOT_FOUND', 'message': 'Invoice not found.', 'details': None},
-                    status=status.HTTP_404_NOT_FOUND,
-                )
 
         file_path = invoice.file
         _write_delete_audit(request, invoice)
@@ -143,6 +127,7 @@ class InvoiceBatchStatusUpdateView(BaseInvoiceBatchStatusUpdateView):
                 {'code': 'INVALID_REQUEST', 'message': 'ids must be a non-empty list', 'details': None},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
         valid_statuses = {choice[0] for choice in InvoiceStatus.choices}
         if new_status not in valid_statuses:
             return Response(
