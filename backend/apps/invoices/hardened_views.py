@@ -239,9 +239,11 @@ class InvoiceBatchDeleteView(BaseInvoiceBatchDeleteView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # Lock only Invoice rows. Joining nullable item with FOR UPDATE causes
+        # PostgreSQL to reject the query because the nullable side of an outer
+        # join cannot be locked.
         invoices = list(
             Invoice.objects.select_for_update()
-            .select_related('item', 'created_by')
             .filter(id__in=ids)
             .order_by('id')
         )
