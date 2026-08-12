@@ -136,11 +136,10 @@ class AuthService:
         if not jti:
             raise InvalidToken('Token is missing jti claim.')
         try:
-            return (
-                OutstandingToken.objects.select_for_update()
-                .select_related('user')
-                .get(jti=jti)
-            )
+            # Lock only the outstanding-token row. Joining the nullable user
+            # relation here turns into an outer join, and PostgreSQL rejects
+            # FOR UPDATE on the nullable side of that join.
+            return OutstandingToken.objects.select_for_update().get(jti=jti)
         except OutstandingToken.DoesNotExist as exc:
             raise InvalidToken('Refresh token is not outstanding.') from exc
 
