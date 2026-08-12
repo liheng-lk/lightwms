@@ -2,18 +2,21 @@
 Serializers for audit log API.
 """
 from rest_framework import serializers
+
 from .models import AuditLog, LoginLog, AuditAction, TargetType
+from .sanitization import sanitize_audit_data
 
 
 class AuditLogSerializer(serializers.ModelSerializer):
-    """Serializer for AuditLog model."""
-    
+    """Serializer for immutable AuditLog model."""
+
     operator_username = serializers.CharField(
         source='operator.username',
         read_only=True,
         allow_null=True
     )
-    
+    diff = serializers.SerializerMethodField()
+
     class Meta:
         model = AuditLog
         fields = [
@@ -31,16 +34,21 @@ class AuditLogSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
+    def get_diff(self, obj):
+        # Historic rows created before central sanitization are protected at
+        # the API boundary as well.
+        return sanitize_audit_data(obj.diff or {})
+
 
 class LoginLogSerializer(serializers.ModelSerializer):
     """Serializer for LoginLog model."""
-    
+
     user_username = serializers.CharField(
         source='user.username',
         read_only=True,
         allow_null=True
     )
-    
+
     class Meta:
         model = LoginLog
         fields = [
@@ -58,7 +66,7 @@ class LoginLogSerializer(serializers.ModelSerializer):
 
 class AuditLogFilterSerializer(serializers.Serializer):
     """Serializer for audit log filter parameters."""
-    
+
     action = serializers.ChoiceField(
         choices=AuditAction.choices,
         required=False,
