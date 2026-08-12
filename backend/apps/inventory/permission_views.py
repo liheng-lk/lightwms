@@ -4,10 +4,15 @@ These wrappers keep the existing business behavior while centralising role and
 owner checks. They intentionally return 404 for another manager's item so the
 API does not disclose object existence across manager scopes.
 """
+from decimal import Decimal, InvalidOperation
+
+from django.db import transaction
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 
+from apps.users.models import User, UserRole
+from core.exceptions import BusinessConflictError
 from core.permissions import IsItemManagerOrSuperAdmin, IsSuperAdmin
 from core.role_utils import is_super_admin, is_item_manager, can_manage_item
 
@@ -27,6 +32,103 @@ from .views import (
     ItemBatchUpdateLocationView as BaseItemBatchUpdateLocationView,
     ItemBatchUpdateOwnerView as BaseItemBatchUpdateOwnerView,
 )
+
+
+_MANAGEABLE_OWNER_ROLES = {UserRole.SUPER_ADMIN, UserRole.ITEM_MANAGER}
+
+
+def _validate_requested_owner(request):
+    """Validate an explicit owner assignment before an item is created."""
+    raw_owner_id = request.data.get('owner')
+    if raw_owner_id in (None, ''):
+        return None
+
+    try:
+        owner_id = int(raw_owner_id)
+    except (TypeError, ValueError):
+        return Response(
+            {'code': 'INVALID_OWNER', 'message': 'Invalid owner.', 'details': None},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        owner = User.objects.get(pk=owner_id)
+    except User.DoesNotExist:
+        return Response(
+            {'code': 'OWNER_NOT_FOUND', 'message': 'Owner not found.', 'details': None},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    if not owner.is_active:
+        return Response(
+            {'code': 'OWNER_INACTIVE', 'message': 'Cannot assign inventory to an inactive user.', 'details': None},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if owner.role not in _MANAGEABLE_OWNER_ROLES:
+        return Response(
+            {
+                'code': 'INVALID_OWNER_ROLE',
+                'message': 'Inventory owner must be a super admin or item manager.',
+                'details': {'owner_id': owner.id, 'role': owner.role},
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # A manager must never create inventory directly inside another manager's
+    # security scope. Only a super admin can make an explicit cross-owner
+    # assignment.
+    if is_item_manager(request.user) and owner.id != request.user.id:
+        return Response(
+            {'code': 'PERMISSION_DENIED', 'message': 'Permission denied.', 'details': None},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    return None
+
+
+def _normalise_item_ids(raw_ids):
+    """Return a de-duplicated integer id list or None for invalid input."""
+    if not isinstance(raw_ids, list) or not raw_ids:
+        return None
+    try:
+        return list(dict.fromkeys(int(item_id) for item_id in raw_ids))
+    except (TypeError, ValueError):
+        return None
+
+
+def _preflight_owned_items(request, item_ids, *, active_only=False):
+    """Resolve an entire batch and reject missing/cross-owner items up front."""
+    qs = Item.objects.filter(id__in=item_ids)
+    if active_only:
+        qs = qs.filter(is_active=True)
+    items = list(qs.select_for_update())
+
+    if len(items) != len(item_ids):
+        found = {item.id for item in items}
+        missing = [item_id for item_id in item_ids if item_id not in found]
+        return None, Response(
+            {
+                'code': 'ITEM_NOT_FOUND',
+                'message': 'One or more items were not found or are inactive.',
+                'details': {'item_ids': missing},
+            },
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    if is_item_manager(request.user):
+        forbidden = [item.id for item in items if item.owner_id != request.user.id]
+        if forbidden:
+            return None, Response(
+                {
+                    'code': 'PERMISSION_DENIED',
+                    'message': 'Permission denied for one or more items.',
+                    'details': {'item_ids': forbidden},
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+    return items, None
 
 
 class ItemListCreateView(BaseItemListCreateView):
@@ -52,6 +154,12 @@ class ItemListCreateView(BaseItemListCreateView):
             qs = qs.filter(owner_id=user.id)
 
         return qs.prefetch_related('images')
+
+    def post(self, request):
+        owner_error = _validate_requested_owner(request)
+        if owner_error:
+            return owner_error
+        return super().post(request)
 
 
 class _OwnedItemMixin:
@@ -155,16 +263,150 @@ class ItemImageSetPrimaryView(BaseItemImageSetPrimaryView):
 class ItemCreateWithInvoiceView(BaseItemCreateWithInvoiceView):
     permission_classes = [IsItemManagerOrSuperAdmin]
 
+    def post(self, request):
+        owner_error = _validate_requested_owner(request)
+        if owner_error:
+            return owner_error
+
+        # Validate all invoice metadata before the base view creates the item.
+        # The previous ordering could return 400 after the item had already
+        # persisted, leaving an invisible/duplicate-prone "ghost" item.
+        if 'invoice_file' in request.FILES:
+            invoice_amount = request.data.get('invoice_amount')
+            invoice_category = request.data.get('invoice_category')
+            if invoice_amount in (None, ''):
+                return Response(
+                    {
+                        'code': 'VALIDATION_ERROR',
+                        'message': 'invoice_amount is required when uploading invoice.',
+                        'details': None,
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if not invoice_category:
+                return Response(
+                    {
+                        'code': 'VALIDATION_ERROR',
+                        'message': 'invoice_category is required when uploading invoice.',
+                        'details': None,
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            try:
+                amount = Decimal(str(invoice_amount))
+            except (InvalidOperation, TypeError, ValueError):
+                return Response(
+                    {
+                        'code': 'VALIDATION_ERROR',
+                        'message': 'invoice_amount must be a valid number.',
+                        'details': None,
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if amount <= 0:
+                return Response(
+                    {
+                        'code': 'VALIDATION_ERROR',
+                        'message': 'invoice_amount must be greater than zero.',
+                        'details': None,
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        return super().post(request)
+
 
 class ItemBatchDeleteView(BaseItemBatchDeleteView):
     permission_classes = [IsItemManagerOrSuperAdmin]
 
+    def post(self, request):
+        item_ids = _normalise_item_ids(request.data.get('ids'))
+        if item_ids is None:
+            return Response(
+                {'code': 'NO_IDS', 'message': 'No valid item IDs provided.', 'details': None},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        ip = getattr(request, 'client_ip', request.META.get('REMOTE_ADDR', ''))
+        user_agent = getattr(request, 'user_agent', request.META.get('HTTP_USER_AGENT', ''))
+
+        try:
+            # Permission and business validation must be all-or-nothing. If any
+            # deletion fails, leaving this atomic block rolls the entire batch
+            # back instead of silently returning 204 after a partial delete.
+            with transaction.atomic():
+                _, preflight_error = _preflight_owned_items(request, item_ids)
+                if preflight_error:
+                    transaction.set_rollback(True)
+                    return preflight_error
+
+                for item_id in item_ids:
+                    ItemService.delete(
+                        item_id=item_id,
+                        operator=request.user,
+                        ip=ip,
+                        user_agent=user_agent,
+                    )
+        except BusinessConflictError as exc:
+            return Response(
+                {'code': exc.code, 'message': exc.message, 'details': exc.details},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class ItemBatchUpdateLocationView(BaseItemBatchUpdateLocationView):
     permission_classes = [IsItemManagerOrSuperAdmin]
+
+    def post(self, request):
+        item_ids = _normalise_item_ids(request.data.get('item_ids'))
+        if item_ids is None:
+            return Response(
+                {'code': 'NO_ITEM_IDS', 'message': '请选择要迁移的物品', 'details': None},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Check the entire requested batch before the service mutates anything.
+        with transaction.atomic():
+            _, preflight_error = _preflight_owned_items(
+                request, item_ids, active_only=True
+            )
+            if preflight_error:
+                transaction.set_rollback(True)
+                return preflight_error
+
+        return super().post(request)
 
 
 class ItemBatchUpdateOwnerView(BaseItemBatchUpdateOwnerView):
     # Reassigning ownership changes another manager's security boundary, so it
     # is a system-administration operation rather than normal stock handling.
     permission_classes = [IsSuperAdmin]
+
+    def post(self, request):
+        raw_owner_id = request.data.get('owner_id')
+        try:
+            owner = User.objects.get(pk=int(raw_owner_id))
+        except (TypeError, ValueError, User.DoesNotExist):
+            return Response(
+                {'code': 'USER_NOT_FOUND', 'message': 'Target user not found.', 'details': None},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not owner.is_active:
+            return Response(
+                {'code': 'USER_INACTIVE', 'message': 'Cannot assign items to inactive user.', 'details': None},
+                status=status.HTTP_409_CONFLICT,
+            )
+        if owner.role not in _MANAGEABLE_OWNER_ROLES:
+            return Response(
+                {
+                    'code': 'INVALID_OWNER_ROLE',
+                    'message': 'Inventory owner must be a super admin or item manager.',
+                    'details': {'owner_id': owner.id, 'role': owner.role},
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return super().post(request)
