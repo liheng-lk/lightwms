@@ -10,23 +10,29 @@ export interface AuditLogFilters {
   [key: string]: unknown;
 }
 
+export interface AuditDiff {
+  before?: Record<string, unknown> | null;
+  after?: Record<string, unknown> | null;
+}
+
 export interface AuditLog {
   id: number;
   user?: number | null;
   operator?: number | null;
   username?: string | null;
   operator_username?: string | null;
+  operator_role?: string | null;
   action: string;
   target_type: string;
   target_id: number | null;
   target_repr?: string;
   changes?: Record<string, unknown> | null;
-  diff?: Record<string, unknown> | null;
+  diff?: AuditDiff | null;
   metadata?: Record<string, unknown> | null;
   ip_address?: string | null;
   ip?: string | null;
+  user_agent?: string | null;
   created_at: string;
-  [key: string]: unknown;
 }
 
 export interface LoginLog {
@@ -36,11 +42,10 @@ export interface LoginLog {
   username_attempted?: string;
   ip_address?: string | null;
   ip?: string | null;
-  user_agent?: string;
+  user_agent?: string | null;
   success: boolean;
   failure_reason?: string;
   created_at: string;
-  [key: string]: unknown;
 }
 
 export const ACTION_LABELS: Record<string, string> = {

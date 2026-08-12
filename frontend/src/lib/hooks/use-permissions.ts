@@ -15,20 +15,16 @@ export function usePermissions() {
   const isItemManager = user?.role === 'item_manager';
   const isReadOnlyUser = user?.role === 'read_only_user';
   const canManage = isSuperAdmin || isItemManager;
+  const scopedManagerAccess = (resource?: OwnedResource) => isSuperAdmin || (isItemManager && (ownerId(resource) === null || ownerId(resource) === user?.id));
   const canCreate = () => canManage;
-  const canEdit = (resource?: OwnedResource) => isSuperAdmin || (isItemManager && (ownerId(resource) === null || ownerId(resource) === user?.id));
+  const canEdit = scopedManagerAccess;
+  const canOperate = scopedManagerAccess;
   const canDelete = (resource?: OwnedResource) => isSuperAdmin || (isItemManager && !!resource && ownerId(resource) === user?.id);
   const canViewAuditLogs = () => canManage;
   return {
-    isSuperAdmin,
-    isItemManager,
-    isReadOnlyUser,
-    canManage,
-    canCreate,
-    canEdit,
-    canDelete,
-    canViewAuditLogs,
-    canBorrow: () => !!user,
-    canTake: () => !!user,
+    isSuperAdmin, isItemManager, isReadOnlyUser, canManage,
+    canCreate, canEdit, canOperate, canDelete, canViewAuditLogs,
+    canBorrow: () => canManage,
+    canTake: () => canManage,
   };
 }

@@ -1,6 +1,6 @@
 'use client';
 import { useMutation,useQuery,useQueryClient } from '@tanstack/react-query';
-import type { Paginated,User,UserRole } from '../types';
+import type { User,UserRole } from '../types';
 import { apiFetch,json } from '../api/client';
 import { getUsers } from '../api/users';
 type Params=Record<string,unknown>;
@@ -10,6 +10,8 @@ export function useCreateUser(){const qc=useQueryClient();return useMutation<Use
 export function useDisableUser(){const qc=useQueryClient();return useMutation<unknown,Error,number>({mutationFn:(id)=>apiFetch(`/users/${id}/disable/`,{method:'POST'}),onSuccess:refresh(qc)});}
 export function useEnableUser(){const qc=useQueryClient();return useMutation<unknown,Error,number>({mutationFn:(id)=>apiFetch(`/users/${id}/enable/`,{method:'POST'}),onSuccess:refresh(qc)});}
 export function useResetPassword(){const qc=useQueryClient();return useMutation<{temporary_password:string},Error,number>({mutationFn:(id)=>apiFetch(`/users/${id}/reset-password/`,{method:'POST'}),onSuccess:refresh(qc)});}
-export function useSetUserPassword(){const qc=useQueryClient();return useMutation<unknown,Error,{id:number;password?:string;new_password?:string}>({mutationFn:({id,password,new_password})=>apiFetch(`/users/${id}/set-password/`,{method:'POST',body:json({new_password:new_password??password})}),onSuccess:refresh(qc)});}
-export function useUpdateUserRole(){const qc=useQueryClient();return useMutation<unknown,Error,{id:number;role:UserRole}>({mutationFn:({id,role})=>apiFetch(`/users/${id}/update-role/`,{method:'POST',body:json({role})}),onSuccess:refresh(qc)});}
+type SetPasswordInput={id:number;password?:string;new_password?:string;data?:{new_password?:string}};
+export function useSetUserPassword(){const qc=useQueryClient();return useMutation<unknown,Error,SetPasswordInput>({mutationFn:({id,password,new_password,data})=>apiFetch(`/users/${id}/set-password/`,{method:'POST',body:json({new_password:data?.new_password??new_password??password})}),onSuccess:refresh(qc)});}
+type UpdateRoleInput={id:number;role?:UserRole;data?:{role?:UserRole}};
+export function useUpdateUserRole(){const qc=useQueryClient();return useMutation<unknown,Error,UpdateRoleInput>({mutationFn:({id,role,data})=>apiFetch(`/users/${id}/update-role/`,{method:'POST',body:json({role:data?.role??role})}),onSuccess:refresh(qc)});}
 export function useChangePassword(){return useMutation<unknown,Error,{old_password:string;new_password:string}>({mutationFn:(d)=>apiFetch('/users/me/change-password/',{method:'POST',body:json(d)})});}

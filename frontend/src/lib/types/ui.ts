@@ -8,6 +8,7 @@ export const itemStatusConfig = {
   in_stock: { label: '有库存', variant: 'success' as const },
   out_of_stock: { label: '缺货', variant: 'destructive' as const },
   inactive: { label: '已停用', variant: 'outline' as const },
+  unavailable: { label: '暂无可借', variant: 'warning' as const },
 };
 export const borrowStatusConfig = {
   active: { label: '借用中', variant: 'warning' as const },

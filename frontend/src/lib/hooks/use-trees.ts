@@ -7,7 +7,7 @@ export function useWarehouses(){return useQuery({queryKey:['warehouses'],queryFn
 export function useCategoryTree(){return useQuery({queryKey:['categories','tree'],queryFn:()=>arrayData<Category>('/categories/tree/')});}
 export function useCategoryList(params:Record<string,unknown>={}){return useQuery({queryKey:['categories','list',params],queryFn:()=>arrayData<Category>(`/categories/${queryString(params)}`)});}
 export function useLocationTree(){return useQuery({queryKey:['locations','tree'],queryFn:()=>arrayData<Location>('/locations/tree/')});}
-export function useLocationTreeByWarehouse(warehouseId?:number){return useQuery({queryKey:['locations','tree',warehouseId],queryFn:()=>arrayData<Location>(`/locations/tree/${queryString({warehouse:warehouseId})}`),enabled:!!warehouseId});}
+export function useLocationTreeByWarehouse(warehouseId?:number|null){return useQuery({queryKey:['locations','tree',warehouseId],queryFn:()=>arrayData<Location>(`/locations/tree/${queryString({warehouse:warehouseId})}`),enabled:warehouseId!==null&&warehouseId!==undefined});}
 export function useLocationList(params:Record<string,unknown>={}){return useQuery({queryKey:['locations','list',params],queryFn:()=>arrayData<Location>(`/locations/${queryString(params)}`)});}
 function invalidate(qc:ReturnType<typeof useQueryClient>, keys:string[]){return ()=>Promise.all(keys.map(k=>qc.invalidateQueries({queryKey:[k]})));}
 export function useCreateCategory(){const qc=useQueryClient();return useMutation<Category,Error,any>({mutationFn:(d)=>apiFetch('/categories/',{method:'POST',body:json(d)}),onSuccess:invalidate(qc,['categories'])});}
