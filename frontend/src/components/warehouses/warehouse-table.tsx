@@ -35,6 +35,7 @@ interface WarehouseTableProps {
   selectable?: boolean;
   selectedIds?: number[];
   onSelectionChange?: (ids: number[]) => void;
+  canManage?: boolean;
 }
 
 export function WarehouseTable({ 
@@ -45,10 +46,12 @@ export function WarehouseTable({
   selectable = false,
   selectedIds = [],
   onSelectionChange,
+  canManage = true,
 }: WarehouseTableProps) {
   const { mutate: deactivateWarehouse, isPending: isDeactivating } = useDeactivateWarehouse();
 
   const handleDeactivate = (id: number) => {
+    if (!canManage) return;
     deactivateWarehouse(id, {
       onSuccess: () => {
         onDeactivateSuccess?.();
@@ -108,7 +111,7 @@ export function WarehouseTable({
             <TableHead>名称</TableHead>
             <TableHead className="hidden md:table-cell">描述</TableHead>
             <TableHead className="w-[80px]">状态</TableHead>
-            <TableHead className="w-[120px]">操作</TableHead>
+            {canManage && <TableHead className="w-[120px]">操作</TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -137,49 +140,51 @@ export function WarehouseTable({
                   {warehouse.is_active ? '启用' : '停用'}
                 </Badge>
               </TableCell>
-              <TableCell>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => onEdit?.(warehouse)}
-                    title="编辑仓库"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  
-                  {warehouse.is_active && (
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          title="停用仓库"
-                          disabled={isDeactivating}
-                        >
-                          <Ban className="h-4 w-4" />
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>确认停用仓库</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            确定要停用仓库「{warehouse.name}」吗？停用后该仓库下的库位将无法使用。
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>取消</AlertDialogCancel>
-                          <AlertDialogAction
-                            onClick={() => handleDeactivate(warehouse.id)}
+              {canManage && (
+                <TableCell>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => onEdit?.(warehouse)}
+                      title="编辑仓库"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    
+                    {warehouse.is_active && (
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="停用仓库"
+                            disabled={isDeactivating}
                           >
-                            确认停用
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  )}
-                </div>
-              </TableCell>
+                            <Ban className="h-4 w-4" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>确认停用仓库</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              确定要停用仓库「{warehouse.name}」吗？停用后该仓库下的库位将无法使用。
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>取消</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => handleDeactivate(warehouse.id)}
+                            >
+                              确认停用
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    )}
+                  </div>
+                </TableCell>
+              )}
             </TableRow>
           );
           })}

@@ -5,10 +5,13 @@ import { LocationTree } from '@/components/trees/location-tree';
 import { LocationForm } from '@/components/locations/location-form';
 import { PageHelp } from '@/components/ui/help-tooltip';
 import { useWarehouses } from '@/lib/hooks/use-trees';
+import { useAuth } from '@/providers/auth-provider';
 import { useQueryClient } from '@tanstack/react-query';
 import type { Location } from '@/lib/types';
 
 export default function LocationsPage() {
+  const { user } = useAuth();
+  const canManage = user?.role === 'super_admin' || user?.role === 'item_manager';
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingLocation, setEditingLocation] = useState<Location | undefined>(undefined);
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<number | undefined>(undefined);
@@ -17,29 +20,26 @@ export default function LocationsPage() {
   
   const { data: warehouses } = useWarehouses();
 
-  // Handler for adding a new location - Requirements 16.3, 16.4
   const handleAddLocation = useCallback((warehouseId: number, parentId?: number) => {
+    if (!canManage) return;
     setSelectedWarehouseId(warehouseId);
     setSelectedParentId(parentId);
     setEditingLocation(undefined);
     setShowCreateDialog(true);
-  }, []);
+  }, [canManage]);
 
-  // Handler for editing a location
   const handleEditLocation = useCallback((location: Location) => {
+    if (!canManage) return;
     setEditingLocation(location);
     setSelectedWarehouseId(location.warehouse);
     setSelectedParentId(location.parent || undefined);
     setShowCreateDialog(true);
-  }, []);
+  }, [canManage]);
 
-  // Handler for successful location creation/update
   const handleSuccess = useCallback(() => {
-    // Invalidate location queries to refresh the tree
     queryClient.invalidateQueries({ queryKey: ['locations'] });
   }, [queryClient]);
 
-  // Handler for dialog close
   const handleDialogClose = useCallback((open: boolean) => {
     setShowCreateDialog(open);
     if (!open) {
@@ -61,32 +61,32 @@ export default function LocationsPage() {
             '先选择仓库，再查看或管理该仓库的库位',
             '点击库位名称可查看该位置的物品',
             '停用库位前需先移除或转移其下的物品',
-            '仅超级管理员可管理库位',
+            '物品管理员只能维护自己负责的库位，超级管理员可全局维护',
           ]}
         />
       </div>
       
       <p className="text-sm text-muted-foreground">
-        选择仓库后可查看和管理该仓库的库位结构，点击库位可查看该库位下的物品
+        选择仓库后可查看库位结构；有管理权限的用户可维护允许范围内的库位
       </p>
       
-      {/* Location Tree with management features - Requirements 16.1, 16.2 */}
       <LocationTree 
-        showManagement={true}
-        onAddLocation={handleAddLocation}
-        onEditLocation={handleEditLocation}
+        showManagement={canManage}
+        onAddLocation={canManage ? handleAddLocation : undefined}
+        onEditLocation={canManage ? handleEditLocation : undefined}
       />
 
-      {/* Create/Edit Location Dialog - Requirements 16.3, 16.4 */}
-      <LocationForm
-        location={editingLocation}
-        warehouses={warehouses || []}
-        selectedWarehouseId={selectedWarehouseId}
-        selectedParentId={selectedParentId}
-        open={showCreateDialog}
-        onOpenChange={handleDialogClose}
-        onSuccess={handleSuccess}
-      />
+      {canManage && (
+        <LocationForm
+          location={editingLocation}
+          warehouses={warehouses || []}
+          selectedWarehouseId={selectedWarehouseId}
+          selectedParentId={selectedParentId}
+          open={showCreateDialog}
+          onOpenChange={handleDialogClose}
+          onSuccess={handleSuccess}
+        />
+      )}
     </div>
   );
 }
