@@ -37,8 +37,8 @@ from .permission_views import (
     ItemBatchUpdateOwnerView,
 )
 
-from apps.imports.views import ItemImportView
 from apps.imports.permission_views import (
+    ItemImportView,
     ItemExportView,
     ItemImportTemplateView,
     BorrowRecordExportView,
