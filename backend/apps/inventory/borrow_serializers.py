@@ -3,20 +3,11 @@ from rest_framework import serializers
 
 from apps.operations.models import BorrowStatus
 
-from .serializers import ItemSerializer
+from .serializers import ItemByBarcodeSerializer, ItemSerializer
 
 
-class BorrowAwareItemSerializer(ItemSerializer):
-    """Item detail serializer with all active borrow records.
-
-    Existing singular borrow fields remain for backward compatibility, but are
-    populated only when exactly one active record exists. New clients should
-    use `active_borrows` for quantity-aware behavior.
-    """
-    active_borrows = serializers.SerializerMethodField()
-
-    class Meta(ItemSerializer.Meta):
-        fields = list(ItemSerializer.Meta.fields) + ['active_borrows']
+class ActiveBorrowMixin:
+    """Reusable helpers for serializing active borrow state."""
 
     def _active_records(self, obj):
         cache_name = '_borrow_aware_active_records'
@@ -46,6 +37,19 @@ class BorrowAwareItemSerializer(ItemSerializer):
             for record in self._active_records(obj)
         ]
 
+
+class BorrowAwareItemSerializer(ActiveBorrowMixin, ItemSerializer):
+    """Item detail serializer with all active borrow records.
+
+    Existing singular borrow fields remain for backward compatibility, but are
+    populated only when exactly one active record exists. New clients should
+    use `active_borrows` for quantity-aware behavior.
+    """
+    active_borrows = serializers.SerializerMethodField()
+
+    class Meta(ItemSerializer.Meta):
+        fields = list(ItemSerializer.Meta.fields) + ['active_borrows']
+
     def get_current_borrower(self, obj):
         record = self._single_active_record(obj)
         return record.borrower.username if record else None
@@ -67,3 +71,17 @@ class BorrowAwareItemSerializer(ItemSerializer):
         if record.expected_return_date < today:
             return (today - record.expected_return_date).days
         return 0
+
+
+class BorrowAwareBarcodeSerializer(ActiveBorrowMixin, ItemByBarcodeSerializer):
+    """Scanner response with the same quantity-aware borrow state as detail."""
+    active_borrows = serializers.SerializerMethodField()
+    available_quantity = serializers.IntegerField(read_only=True)
+    borrowed_quantity = serializers.IntegerField(read_only=True)
+
+    class Meta(ItemByBarcodeSerializer.Meta):
+        fields = list(ItemByBarcodeSerializer.Meta.fields) + [
+            'available_quantity',
+            'borrowed_quantity',
+            'active_borrows',
+        ]
