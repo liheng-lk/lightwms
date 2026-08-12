@@ -84,6 +84,21 @@ class InvoiceDetailView(BaseInvoiceDetailView):
         except Invoice.DoesNotExist:
             return None
 
+    def patch(self, request, pk):
+        # Reimbursement status is an approval decision. Item managers may edit
+        # invoice metadata but must never bypass the dedicated super-admin
+        # status endpoint by sending status through the generic PATCH route.
+        if 'status' in request.data and not is_super_admin(request.user):
+            return Response(
+                {
+                    'code': 'PERMISSION_DENIED',
+                    'message': 'Only Super Admin can change reimbursement status.',
+                    'details': None,
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().patch(request, pk)
+
 
 class InvoiceStatusUpdateView(BaseInvoiceStatusUpdateView):
     """Reimbursement state is a system-level approval action."""
@@ -102,6 +117,30 @@ class InvoiceBatchDeleteView(BaseInvoiceBatchDeleteView):
 class InvoiceCategoriesView(BaseInvoiceCategoriesView):
     permission_classes = [IsItemManagerOrSuperAdmin]
 
+    def get(self, request):
+        qs = Invoice.objects.all()
+        if is_item_manager(request.user):
+            qs = qs.filter(_manager_invoice_scope(request.user)).distinct()
+        categories = list(
+            qs.exclude(category='')
+            .values_list('category', flat=True)
+            .distinct()
+            .order_by('category')
+        )
+        return Response(categories, status=status.HTTP_200_OK)
+
 
 class InvoiceMonthsView(BaseInvoiceMonthsView):
     permission_classes = [IsItemManagerOrSuperAdmin]
+
+    def get(self, request):
+        qs = Invoice.objects.all()
+        if is_item_manager(request.user):
+            qs = qs.filter(_manager_invoice_scope(request.user)).distinct()
+        months = list(
+            qs.exclude(registered_month='')
+            .values_list('registered_month', flat=True)
+            .distinct()
+            .order_by('-registered_month')
+        )
+        return Response(months, status=status.HTTP_200_OK)
