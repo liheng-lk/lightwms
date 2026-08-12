@@ -86,7 +86,7 @@ jobs:
           from pathlib import Path
 
           contracts = defaultdict(set)
-          pattern = re.compile(r"import\s+(.*?)\s+from\s+['\"](@/lib/[^'\"]+)['\"]", re.S)
+          pattern = re.compile(r"import\s+([^;]+?)\s+from\s+['\"](@/lib/[^'\"]+)['\"]\s*;", re.S)
           for path in sorted(Path('src').rglob('*')):
               if not path.is_file() or path.suffix not in {'.ts', '.tsx'}:
                   continue
