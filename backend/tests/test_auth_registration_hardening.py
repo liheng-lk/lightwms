@@ -8,11 +8,9 @@ from django.test import RequestFactory, override_settings
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
-from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.audit.models import LoginLog
 from apps.users.models import InviteCode, User, UserRole, WechatSession
-from apps.users.services import AuthService, RegistrationService
 from core.middleware import RequestContextMiddleware
 
 
@@ -114,8 +112,8 @@ class TestRefreshAndLogoutOwnership:
 
 @pytest.mark.django_db
 class TestWechatOAuthState:
-    def _authorize(self):
-        response = APIClient().get('/api/v1/auth/wechat/authorize/')
+    def _authorize(self, query=''):
+        response = APIClient().get(f'/api/v1/auth/wechat/authorize/{query}')
         assert response.status_code == status.HTTP_200_OK
         parsed = urlparse(response.data['authorize_url'])
         state = parse_qs(parsed.query)['state'][0]
@@ -177,6 +175,35 @@ class TestWechatOAuthState:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert not WechatSession.objects.exists()
 
+    @override_settings(
+        WECHAT_REDIRECT_URI='https://wms.example.com/api/v1/auth/wechat/callback/',
+        WECHAT_ALLOWED_REDIRECT_URIS=[
+            'https://wms.example.com/api/v1/auth/wechat/callback/',
+        ],
+    )
+    def test_authorize_rejects_unapproved_redirect_uri(self):
+        response = APIClient().get(
+            '/api/v1/auth/wechat/authorize/?redirect_uri=https%3A%2F%2Fevil.example%2Fsteal'
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    @override_settings(
+        WECHAT_REDIRECT_URI='https://wms.example.com/api/v1/auth/wechat/callback/',
+        WECHAT_ALLOWED_REDIRECT_URIS=[
+            'https://wms.example.com/api/v1/auth/wechat/callback/',
+        ],
+    )
+    def test_authorize_accepts_exact_allowlisted_redirect_uri(self):
+        response = APIClient().get(
+            '/api/v1/auth/wechat/authorize/?redirect_uri='
+            'https%3A%2F%2Fwms.example.com%2Fapi%2Fv1%2Fauth%2Fwechat%2Fcallback%2F'
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        redirect_uri = parse_qs(urlparse(response.data['authorize_url']).query)['redirect_uri'][0]
+        assert redirect_uri == 'https://wms.example.com/api/v1/auth/wechat/callback/'
+
 
 @pytest.mark.django_db
 class TestRegistrationAtomicity:
@@ -214,7 +241,9 @@ class TestRegistrationAtomicity:
             'password': 'StrongPass123!',
         }, format='json')
 
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        # Duplicate account identity is a conflict, but the registration
+        # transaction must still roll back the invite usage increment.
+        assert response.status_code == status.HTTP_409_CONFLICT
         invite.refresh_from_db()
         assert invite.current_uses == 0
 
@@ -236,6 +265,57 @@ class TestRegistrationAtomicity:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         invite.refresh_from_db()
         assert invite.current_uses == 0
+
+
+@pytest.mark.django_db
+class TestInviteCodeUpdateBounds:
+    def test_admin_cannot_lower_max_uses_below_current_uses(self, admin):
+        invite = InviteCode.objects.create(
+            code='INV-USED01',
+            max_uses=5,
+            current_uses=3,
+            default_role=UserRole.READ_ONLY_USER,
+            is_active=True,
+            created_by=admin,
+        )
+        client = APIClient()
+        tokens = login(client, admin)
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {tokens['access']}")
+
+        response = client.patch(
+            f'/api/v1/invite-codes/{invite.id}/',
+            {'max_uses': 2},
+            format='json',
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        invite.refresh_from_db()
+        assert invite.max_uses == 5
+        assert invite.current_uses == 3
+
+    def test_admin_may_set_max_uses_equal_to_current_uses(self, admin):
+        invite = InviteCode.objects.create(
+            code='INV-USED02',
+            max_uses=5,
+            current_uses=3,
+            default_role=UserRole.READ_ONLY_USER,
+            is_active=True,
+            created_by=admin,
+        )
+        client = APIClient()
+        tokens = login(client, admin)
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {tokens['access']}")
+
+        response = client.patch(
+            f'/api/v1/invite-codes/{invite.id}/',
+            {'max_uses': 3},
+            format='json',
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        invite.refresh_from_db()
+        assert invite.max_uses == 3
+        assert invite.status == 'exhausted'
 
 
 class TestClientIPTrustBoundary:
@@ -271,3 +351,23 @@ class TestClientIPTrustBoundary:
         # X-Real-IP is overwritten by the shipped Nginx config and therefore
         # is not vulnerable to a client-prepended X-Forwarded-For value.
         assert middleware.get_client_ip(request) == '203.0.113.11'
+
+
+@pytest.mark.django_db
+class TestLoginIPEndToEnd:
+    @override_settings(TRUSTED_PROXY_CIDRS=[])
+    def test_untrusted_forwarded_headers_do_not_pollute_login_log(self, user_a):
+        client = APIClient()
+
+        response = client.post(
+            '/api/v1/auth/login/',
+            {'username': user_a.username, 'password': 'wrong-password'},
+            format='json',
+            REMOTE_ADDR='203.0.113.10',
+            HTTP_X_FORWARDED_FOR='198.51.100.7',
+            HTTP_X_REAL_IP='198.51.100.8',
+        )
+
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        log = LoginLog.objects.filter(username_attempted=user_a.username).latest('created_at')
+        assert log.ip == '203.0.113.10'
