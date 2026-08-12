@@ -10,6 +10,7 @@ class UserRole(models.TextChoices):
     """User role enumeration."""
     SUPER_ADMIN = 'super_admin', 'Super Admin'
     ITEM_MANAGER = 'item_manager', 'Item Manager'
+    READ_ONLY_USER = 'read_only_user', '普通用户'
 
 
 class UserManager(BaseUserManager):
@@ -21,7 +22,9 @@ class UserManager(BaseUserManager):
             raise ValueError('Username is required')
         
         extra_fields.setdefault('is_active', True)
-        extra_fields.setdefault('role', UserRole.ITEM_MANAGER)
+        # Least-privilege default: a newly created regular account must never
+        # silently receive inventory-management permissions.
+        extra_fields.setdefault('role', UserRole.READ_ONLY_USER)
         
         user = self.model(username=username, **extra_fields)
         user.set_password(password)
@@ -68,7 +71,7 @@ class User(AbstractUser):
     role = models.CharField(
         max_length=20,
         choices=UserRole.choices,
-        default=UserRole.ITEM_MANAGER
+        default=UserRole.READ_ONLY_USER
     )
     
     # Password management
@@ -112,6 +115,11 @@ class User(AbstractUser):
         """Check if user is an item manager."""
         return self.role == UserRole.ITEM_MANAGER
 
+    @property
+    def is_read_only_user(self):
+        """Check if user is an ordinary read-only warehouse user."""
+        return self.role == UserRole.READ_ONLY_USER
+
 
 class InviteCodeStatus(models.TextChoices):
     """Computed status for invite codes."""
@@ -141,7 +149,7 @@ class InviteCode(models.Model):
     default_role = models.CharField(
         max_length=20,
         choices=UserRole.choices,
-        default=UserRole.ITEM_MANAGER
+        default=UserRole.READ_ONLY_USER
     )
     
     # Expiration (optional)
