@@ -2,15 +2,16 @@
 from rest_framework import serializers
 
 from apps.operations.models import BorrowStatus
+from apps.users.models import UserRole
 
 from .serializers import ItemByBarcodeSerializer, ItemSerializer
 
 
 class ActiveBorrowMixin:
-    """Reusable helpers for serializing active borrow state."""
+    """Reusable helpers for serializing role-scoped active borrow state."""
 
-    def _active_records(self, obj):
-        cache_name = '_borrow_aware_active_records'
+    def _all_active_records(self, obj):
+        cache_name = '_borrow_aware_all_active_records'
         if not hasattr(obj, cache_name):
             records = list(
                 obj.borrow_records.filter(status=BorrowStatus.ACTIVE)
@@ -19,6 +20,21 @@ class ActiveBorrowMixin:
             )
             setattr(obj, cache_name, records)
         return getattr(obj, cache_name)
+
+    def _active_records(self, obj):
+        """Return records visible to the requesting user.
+
+        Managers reach only their owned items through the hardened views, so
+        they may see all active records for operational return handling.
+        Ordinary users may browse inventory but must only see their own borrow
+        transactions; exposing coworkers here would leak personnel activity.
+        """
+        records = self._all_active_records(obj)
+        request = self.context.get('request') if hasattr(self, 'context') else None
+        user = getattr(request, 'user', None)
+        if user and getattr(user, 'role', None) == UserRole.READ_ONLY_USER:
+            return [record for record in records if record.borrower_id == user.id]
+        return records
 
     def _single_active_record(self, obj):
         records = self._active_records(obj)
@@ -39,11 +55,11 @@ class ActiveBorrowMixin:
 
 
 class BorrowAwareItemSerializer(ActiveBorrowMixin, ItemSerializer):
-    """Item detail serializer with all active borrow records.
+    """Item detail serializer with role-scoped active borrow records.
 
     Existing singular borrow fields remain for backward compatibility, but are
-    populated only when exactly one active record exists. New clients should
-    use `active_borrows` for quantity-aware behavior.
+    populated only when exactly one *visible* active record exists. New clients
+    should use `active_borrows` for quantity-aware behavior.
     """
     active_borrows = serializers.SerializerMethodField()
 
