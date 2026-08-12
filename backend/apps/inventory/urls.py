@@ -25,7 +25,6 @@ from .reference_views import (
     CategoryBatchDeleteView,
 )
 from .permission_views import (
-    ItemDetailView,
     ItemDeactivateView,
     ItemDeleteView,
     ItemBatchDeleteView,
@@ -36,6 +35,7 @@ from .permission_views import (
     ItemBatchUpdateLocationView,
     ItemBatchUpdateOwnerView,
 )
+from .borrow_views import ItemDetailView
 from .validated_views import ItemListCreateView, ItemCreateWithInvoiceView
 
 from apps.imports.permission_views import (
