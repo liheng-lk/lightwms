@@ -45,7 +45,8 @@ def item(db, manager):
         owner=manager, is_active=True,
     )
     return Item.objects.create(
-        name='Contract item', sku='CONTRACT-ITEM', owner=manager, location=location,
+        name='Contract item', sku='CONTRACT-ITEM', barcode='CONTRACT-BARCODE',
+        owner=manager, location=location,
         type=ItemType.REUSABLE, status=ItemStatus.AVAILABLE,
         quantity=3, is_active=True,
     )
@@ -61,7 +62,7 @@ def add_active(item, manager, borrower, quantity=1):
 
 @pytest.mark.django_db
 class TestItemBorrowPresentation:
-    def test_item_detail_lists_all_active_borrows(self, manager, borrower_a, borrower_b, item):
+    def test_item_detail_lists_all_active_borrows_for_manager(self, manager, borrower_a, borrower_b, item):
         record_a = add_active(item, manager, borrower_a)
         record_b = add_active(item, manager, borrower_b)
         client = APIClient()
@@ -73,10 +74,22 @@ class TestItemBorrowPresentation:
         assert {row['id'] for row in response.data['active_borrows']} == {record_a.id, record_b.id}
         assert {row['borrower'] for row in response.data['active_borrows']} == {borrower_a.id, borrower_b.id}
         assert sum(row['quantity'] for row in response.data['active_borrows']) == 2
-        # Singular legacy fields must not pretend the first borrower represents
-        # the whole multi-borrow state.
         assert response.data['current_borrower'] is None
         assert response.data['current_borrow_record_id'] is None
+
+    def test_ordinary_user_sees_only_own_active_borrows(self, manager, borrower_a, borrower_b, item):
+        own = add_active(item, manager, borrower_a)
+        other = add_active(item, manager, borrower_b)
+        client = APIClient()
+        client.force_authenticate(user=borrower_a)
+
+        response = client.get(f'/api/v1/items/{item.id}/')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert [row['id'] for row in response.data['active_borrows']] == [own.id]
+        assert other.id not in {row['id'] for row in response.data['active_borrows']}
+        assert response.data['current_borrower'] == borrower_a.username
+        assert response.data['current_borrow_record_id'] == own.id
 
     def test_single_active_borrow_keeps_legacy_singular_fields(self, manager, borrower_a, item):
         record = add_active(item, manager, borrower_a, quantity=2)
@@ -90,6 +103,36 @@ class TestItemBorrowPresentation:
         assert response.data['current_borrower'] == borrower_a.username
         assert response.data['current_borrow_record_id'] == record.id
         assert response.data['active_borrows'][0]['quantity'] == 2
+
+
+@pytest.mark.django_db
+class TestScannerBorrowPresentation:
+    def test_scanner_returns_quantity_and_all_records_for_manager(self, manager, borrower_a, borrower_b, item):
+        record_a = add_active(item, manager, borrower_a)
+        record_b = add_active(item, manager, borrower_b)
+        client = APIClient()
+        client.force_authenticate(user=manager)
+
+        response = client.get(f'/api/v1/items/by-barcode/{item.barcode}/')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['borrowed_quantity'] == 2
+        assert response.data['available_quantity'] == 1
+        assert {row['id'] for row in response.data['active_borrows']} == {record_a.id, record_b.id}
+
+    def test_scanner_ordinary_user_sees_only_own_record(self, manager, borrower_a, borrower_b, item):
+        own = add_active(item, manager, borrower_a)
+        other = add_active(item, manager, borrower_b)
+        client = APIClient()
+        client.force_authenticate(user=borrower_a)
+
+        response = client.get(f'/api/v1/items/by-barcode/{item.barcode}/')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['borrowed_quantity'] == 2
+        assert response.data['available_quantity'] == 1
+        assert [row['id'] for row in response.data['active_borrows']] == [own.id]
+        assert other.id not in {row['id'] for row in response.data['active_borrows']}
 
 
 @pytest.mark.django_db
