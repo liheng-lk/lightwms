@@ -28,97 +28,60 @@ interface UpdateRoleDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-const roleOptions: { value: UserRole; label: string }[] = [
-  { value: 'super_admin', label: '超级管理员' },
+const roleOptions = [
+  { value: 'read_only_user', label: '普通用户' },
   { value: 'item_manager', label: '物品管理员' },
-];
+  { value: 'super_admin', label: '超级管理员' },
+] as const;
 
 export function UpdateRoleDialog({ user, open, onOpenChange }: UpdateRoleDialogProps) {
-  const [selectedRole, setSelectedRole] = useState<UserRole>('item_manager');
+  const [selectedRole, setSelectedRole] = useState<UserRole>('read_only_user' as UserRole);
   const { mutate: updateRole, isPending } = useUpdateUserRole();
 
-  // 当用户变化时，更新选中的角色
   useEffect(() => {
-    if (user) {
-      setSelectedRole(user.role);
-    }
+    if (user) setSelectedRole(user.role);
   }, [user]);
 
   const handleSubmit = () => {
     if (!user) return;
-    
     updateRole(
-      {
-        id: user.id,
-        data: { role: selectedRole },
-      },
-      {
-        onSuccess: () => {
-          onOpenChange(false);
-        },
-      }
+      { id: user.id, data: { role: selectedRole } },
+      { onSuccess: () => onOpenChange(false) }
     );
   };
 
-  const handleClose = () => {
-    onOpenChange(false);
-  };
-
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>修改用户角色</DialogTitle>
           <DialogDescription>
-            修改用户「{user?.username}」的角色权限
+            修改用户「{user?.username}」的角色。提升权限前请确认其实际职责。
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div className="space-y-2">
             <Label htmlFor="role">角色</Label>
-            <Select
-              value={selectedRole}
-              onValueChange={(value) => setSelectedRole(value as UserRole)}
-              disabled={isPending}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="选择角色" />
-              </SelectTrigger>
+            <Select value={selectedRole} onValueChange={(value) => setSelectedRole(value as UserRole)} disabled={isPending}>
+              <SelectTrigger><SelectValue placeholder="选择角色" /></SelectTrigger>
               <SelectContent>
                 {roleOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
+                  <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
-          
-          <div className="text-sm text-muted-foreground space-y-1">
-            <p>角色权限说明：</p>
-            <ul className="list-disc list-inside space-y-1 ml-2">
-              <li><strong>超级管理员</strong>：拥有所有权限，可管理用户和系统设置</li>
-              <li><strong>物品管理员</strong>：可管理物品、分类、仓库等</li>
-              <li><strong>只读用户</strong>：只能查看数据，不能进行修改操作</li>
-            </ul>
+
+          <div className="rounded-md border p-3 text-sm text-muted-foreground space-y-1">
+            <p><strong className="text-foreground">普通用户</strong>：查看库存、查看自己的业务记录、归还自己的借用。</p>
+            <p><strong className="text-foreground">物品管理员</strong>：管理自己负责的物品，并代办借用、领用和补货。</p>
+            <p><strong className="text-foreground">超级管理员</strong>：管理全部库存、用户、邀请码和系统设置。</p>
           </div>
         </div>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={handleClose} disabled={isPending}>
-            取消
-          </Button>
-          <Button 
-            onClick={handleSubmit} 
-            disabled={isPending || selectedRole === user?.role}
-          >
-            {isPending ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                保存中...
-              </>
-            ) : (
-              '保存'
-            )}
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>取消</Button>
+          <Button onClick={handleSubmit} disabled={isPending || selectedRole === user?.role}>
+            {isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />保存中...</> : '保存'}
           </Button>
         </DialogFooter>
       </DialogContent>
