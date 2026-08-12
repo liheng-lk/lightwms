@@ -5,6 +5,8 @@ Contains LoginLog for authentication events and AuditLog for data changes.
 from django.conf import settings
 from django.db import models
 
+from .sanitization import sanitize_audit_data
+
 
 class AuditAction(models.TextChoices):
     """Audit action enumeration."""
@@ -92,6 +94,9 @@ class AuditLog(models.Model):
     def save(self, *args, **kwargs):
         if self.pk:
             raise PermissionError("AuditLog records cannot be updated")
+        # This central path covers services that call AuditLog.objects.create
+        # directly rather than going through AuditService.log().
+        self.diff = sanitize_audit_data(self.diff or {})
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
