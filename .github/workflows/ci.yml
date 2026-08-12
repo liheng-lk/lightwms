@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: lightwms_test
+          POSTGRES_USER: lightwms
+          POSTGRES_PASSWORD: lightwms_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lightwms -d lightwms_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DATABASE_URL: postgres://lightwms:lightwms_test_password@127.0.0.1:5432/lightwms_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend dependencies
+        run: pip install -r requirements.txt
+      - name: Run backend tests
+        run: pytest
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Verify frontend source integrity
+        run: |
+          test -d src/lib || (echo "ERROR: frontend/src/lib is missing from Git. Check root .gitignore and restore the source directory." && exit 1)
+          test -f src/lib/utils.ts || (echo "ERROR: frontend/src/lib/utils.ts is missing." && exit 1)
+      - name: Install frontend dependencies
+        run: npm ci --legacy-peer-deps
+      - name: Build frontend
+        run: npm run build:ci
