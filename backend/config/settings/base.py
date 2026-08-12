@@ -1,27 +1,40 @@
 """
-Base Django settings for LightWMS.
+Base settings for LightWMS project.
 """
 import os
-from datetime import timedelta
 from pathlib import Path
+from datetime import timedelta
 
+# Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
+# SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-change-me-in-production')
-DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '*').split(',')
 
-INSTALLED_APPS = [
+# SECURITY WARNING: don't run with debug turned on in production!
+DEBUG = False
+
+ALLOWED_HOSTS = []
+
+# Application definition
+DJANGO_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+]
+
+THIRD_PARTY_APPS = [
     'rest_framework',
+    'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
     'drf_spectacular',
     'corsheaders',
+]
+
+LOCAL_APPS = [
     'apps.users',
     'apps.inventory',
     'apps.operations',
@@ -30,6 +43,8 @@ INSTALLED_APPS = [
     'apps.invoices',
     'apps.settings',
 ]
+
+INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -52,6 +67,7 @@ TEMPLATES = [
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
+                'django.template.context_processors.debug',
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
@@ -62,6 +78,8 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'config.wsgi.application'
 
+
+# Database - PostgreSQL (configured per environment)
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
@@ -73,6 +91,7 @@ DATABASES = {
     }
 }
 
+# Redis cache configuration
 CACHES = {
     'default': {
         'BACKEND': 'django_redis.cache.RedisCache',
@@ -83,6 +102,7 @@ CACHES = {
     }
 }
 
+# Password validation
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
@@ -90,19 +110,27 @@ AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
+# Custom user model
 AUTH_USER_MODEL = 'users.User'
 
+# Internationalization
 LANGUAGE_CODE = 'zh-hans'
 TIME_ZONE = 'Asia/Shanghai'
 USE_I18N = True
 USE_TZ = True
 
+# Static files (CSS, JavaScript, Images)
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# Media files
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# Django REST Framework configuration
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'core.authentication.CustomJWTAuthentication',
@@ -116,6 +144,7 @@ REST_FRAMEWORK = {
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
 
+# SimpleJWT configuration
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
@@ -131,6 +160,7 @@ SIMPLE_JWT = {
     'TOKEN_OBTAIN_SERIALIZER': 'apps.users.serializers.CustomTokenObtainPairSerializer',
 }
 
+# drf-spectacular configuration
 SPECTACULAR_SETTINGS = {
     'TITLE': 'LightWMS API',
     'DESCRIPTION': '轻量级仓库管理系统 API',
@@ -138,7 +168,9 @@ SPECTACULAR_SETTINGS = {
     'SERVE_INCLUDE_SCHEMA': False,
     'COMPONENT_SPLIT_REQUEST': True,
     'SECURITY': [{'Bearer': []}],
-    'SWAGGER_UI_SETTINGS': {'persistAuthorization': True},
+    'SWAGGER_UI_SETTINGS': {
+        'persistAuthorization': True,
+    },
     'APPEND_COMPONENTS': {
         'securitySchemes': {
             'Bearer': {
@@ -150,23 +182,26 @@ SPECTACULAR_SETTINGS = {
     },
 }
 
+# CORS configuration
 CORS_ALLOW_ALL_ORIGINS = os.environ.get('CORS_ALLOW_ALL_ORIGINS', 'false').lower() == 'true'
 CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:3000').split(',')
 
+# Login rate limiting configuration
 LOGIN_RATE_LIMIT_THRESHOLD = int(os.environ.get('LOGIN_RATE_LIMIT_THRESHOLD', '10'))
-LOGIN_RATE_LIMIT_WINDOW = int(os.environ.get('LOGIN_RATE_LIMIT_WINDOW', '300'))
-LOGIN_RATE_LIMIT_BLOCK_TTL = int(os.environ.get('LOGIN_RATE_LIMIT_BLOCK_TTL', '900'))
+LOGIN_RATE_LIMIT_WINDOW = int(os.environ.get('LOGIN_RATE_LIMIT_WINDOW', '300'))  # 5 minutes
+LOGIN_RATE_LIMIT_BLOCK_TTL = int(os.environ.get('LOGIN_RATE_LIMIT_BLOCK_TTL', '900'))  # 15 minutes
 
-# Forwarded client-IP headers are used by authentication rate limiting and
-# audit/login logs, so they are accepted only from explicitly trusted proxy
-# networks. Secure default: trust no proxy. Docker deployments should set the
-# internal reverse-proxy CIDR, e.g. 172.16.0.0/12.
+# Forwarded client-IP headers influence login rate limiting and LoginLog.
+# Secure default: trust none. Docker deployments should configure the private
+# reverse-proxy network explicitly, e.g. 172.16.0.0/12.
 TRUSTED_PROXY_CIDRS = [
     value.strip()
     for value in os.environ.get('TRUSTED_PROXY_CIDRS', '').split(',')
     if value.strip()
 ]
 
+# WeChat OAuth redirect allow-list. The callback may only use an exact URI from
+# this list; by default only the configured callback itself is accepted.
 WECHAT_APP_ID = os.environ.get('WECHAT_APP_ID', 'mock_app_id')
 WECHAT_REDIRECT_URI = os.environ.get(
     'WECHAT_REDIRECT_URI',
