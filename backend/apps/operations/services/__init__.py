@@ -2,6 +2,6 @@
 Operations services for LightWMS.
 """
 from .borrow_service import BorrowService
-from .consumable_service import ConsumableService
+from .bounded_consumable_service import BoundedConsumableService as ConsumableService
 
 __all__ = ['BorrowService', 'ConsumableService']
