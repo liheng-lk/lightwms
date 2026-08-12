@@ -32,10 +32,10 @@ from .permission_views import (
     ItemImageListCreateView,
     ItemImageDetailView,
     ItemImageSetPrimaryView,
-    ItemCreateWithInvoiceView,
     ItemBatchUpdateLocationView,
     ItemBatchUpdateOwnerView,
 )
+from .atomic_views import ItemCreateWithInvoiceView
 
 from apps.imports.permission_views import (
     ItemImportView,
