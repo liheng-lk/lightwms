@@ -10,11 +10,14 @@ from .borrow_serializers import BorrowAwareItemSerializer, prefetch_active_borro
 from .models import ItemStatus, ItemType
 
 
+MAX_BIGINT_ID = 9_223_372_036_854_775_807
+
+
 class ItemListQuerySerializer(serializers.Serializer):
-    category = serializers.IntegerField(required=False, min_value=1)
-    location = serializers.IntegerField(required=False, min_value=1)
-    warehouse = serializers.IntegerField(required=False, min_value=1)
-    owner = serializers.IntegerField(required=False, min_value=1)
+    category = serializers.IntegerField(required=False, min_value=1, max_value=MAX_BIGINT_ID)
+    location = serializers.IntegerField(required=False, min_value=1, max_value=MAX_BIGINT_ID)
+    warehouse = serializers.IntegerField(required=False, min_value=1, max_value=MAX_BIGINT_ID)
+    owner = serializers.IntegerField(required=False, min_value=1, max_value=MAX_BIGINT_ID)
     type = serializers.ChoiceField(required=False, choices=ItemType.choices)
     status = serializers.ChoiceField(required=False, choices=ItemStatus.choices)
     include_inactive = serializers.BooleanField(required=False)
