@@ -37,6 +37,11 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   {
+    title: '工作台',
+    href: '/',
+    icon: LayoutDashboard,
+  },
+  {
     title: '扫码操作',
     href: '/scan',
     icon: ScanBarcode,
@@ -119,15 +124,14 @@ export function MobileNav({ onClose }: MobileNavProps) {
   const pathname = usePathname();
   const { user } = useAuth();
   const { settings } = useTheme();
-  
-  // 根据角色过滤菜单
+
   const filteredItems = navItems.filter((item) => {
     if (!item.roles) return true;
     return user?.role && item.roles.includes(user.role);
   });
-  
+
   return (
-    <SheetContent side="left" className="w-64 p-0">
+    <SheetContent side="left" className="w-72 p-0">
       <SheetHeader className="h-16 flex flex-row items-center px-6 border-b">
         <SheetTitle className="flex items-center gap-2">
           {settings.customLogo ? (
@@ -144,19 +148,21 @@ export function MobileNav({ onClose }: MobileNavProps) {
           )}
         </SheetTitle>
       </SheetHeader>
-      
-      <nav className="p-4 space-y-1">
+
+      <nav className="p-4 space-y-1" aria-label="移动端主导航">
         {filteredItems.map((item) => {
-          const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          const isActive = item.href === '/'
+            ? pathname === '/'
+            : pathname === item.href || pathname.startsWith(`${item.href}/`);
           const Icon = item.icon;
-          
+
           return (
             <Link
               key={item.href}
               href={item.href}
               onClick={onClose}
               className={cn(
-                'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors',
+                'flex min-h-11 items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors',
                 isActive
                   ? 'bg-primary text-primary-foreground'
                   : item.highlight
