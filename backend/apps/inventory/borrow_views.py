@@ -12,7 +12,7 @@ from .permission_views import ItemDetailView as BaseItemDetailView
 
 
 class ItemDetailView(BaseItemDetailView):
-    """Item detail including all active borrow records."""
+    """Item detail including role-scoped active borrow records."""
 
     def get(self, request, pk):
         item = self.get_object(pk, request.user)
@@ -21,7 +21,10 @@ class ItemDetailView(BaseItemDetailView):
                 {'code': 'NOT_FOUND', 'message': 'Item not found.', 'details': None},
                 status=status.HTTP_404_NOT_FOUND,
             )
-        return Response(BorrowAwareItemSerializer(item).data, status=status.HTTP_200_OK)
+        return Response(
+            BorrowAwareItemSerializer(item, context={'request': request}).data,
+            status=status.HTTP_200_OK,
+        )
 
 
 class ItemByBarcodeView(APIView):
