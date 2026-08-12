@@ -19,14 +19,16 @@ from .views import (
     CategoryDeactivateView,
     CategoryDeleteView,
     CategoryBatchDeleteView,
+    ItemByBarcodeView,
+    SearchView,
+)
+from .permission_views import (
     ItemListCreateView,
     ItemDetailView,
     ItemDeactivateView,
     ItemDeleteView,
     ItemBatchDeleteView,
     ItemGenerateBarcodeView,
-    ItemByBarcodeView,
-    SearchView,
     ItemImageListCreateView,
     ItemImageDetailView,
     ItemImageSetPrimaryView,
@@ -51,20 +53,20 @@ urlpatterns = [
     path('export/borrow-records/', BorrowRecordExportView.as_view(), name='borrow-record-export'),
     path('export/take-records/', TakeRecordExportView.as_view(), name='take-record-export'),
     path('export/replenish-records/', ReplenishRecordExportView.as_view(), name='replenish-record-export'),
-    
+
     # Warehouse endpoints
     path('warehouses/', WarehouseListCreateView.as_view(), name='warehouse-list-create'),
     path('warehouses/batch-delete/', WarehouseBatchDeleteView.as_view(), name='warehouse-batch-delete'),
     path('warehouses/<int:pk>/', WarehouseDetailView.as_view(), name='warehouse-detail'),
     path('warehouses/<int:pk>/deactivate/', WarehouseDeactivateView.as_view(), name='warehouse-deactivate'),
     path('warehouses/<int:pk>/delete/', WarehouseDeleteView.as_view(), name='warehouse-delete'),
-    
+
     # Location endpoints
     path('locations/', LocationListCreateView.as_view(), name='location-list-create'),
     path('locations/tree/', LocationTreeView.as_view(), name='location-tree'),
     path('locations/<int:pk>/', LocationDetailView.as_view(), name='location-detail'),
     path('locations/<int:pk>/deactivate/', LocationDeactivateView.as_view(), name='location-deactivate'),
-    
+
     # Category endpoints
     path('categories/', CategoryListCreateView.as_view(), name='category-list-create'),
     path('categories/tree/', CategoryTreeView.as_view(), name='category-tree'),
@@ -72,7 +74,7 @@ urlpatterns = [
     path('categories/<int:pk>/', CategoryDetailView.as_view(), name='category-detail'),
     path('categories/<int:pk>/deactivate/', CategoryDeactivateView.as_view(), name='category-deactivate'),
     path('categories/<int:pk>/delete/', CategoryDeleteView.as_view(), name='category-delete'),
-    
+
     # Item endpoints (static routes MUST come before dynamic <int:pk> routes)
     path('items/export/', ItemExportView.as_view(), name='item-export'),
     path('items/import/', ItemImportView.as_view(), name='item-import'),
@@ -87,12 +89,12 @@ urlpatterns = [
     path('items/<int:pk>/deactivate/', ItemDeactivateView.as_view(), name='item-deactivate'),
     path('items/<int:pk>/delete/', ItemDeleteView.as_view(), name='item-delete'),
     path('items/<int:pk>/generate-barcode/', ItemGenerateBarcodeView.as_view(), name='item-generate-barcode'),
-    
+
     # Item image endpoints
     path('items/<int:pk>/images/', ItemImageListCreateView.as_view(), name='item-image-list-create'),
     path('items/<int:pk>/images/<int:image_id>/', ItemImageDetailView.as_view(), name='item-image-detail'),
     path('items/<int:pk>/images/<int:image_id>/set-primary/', ItemImageSetPrimaryView.as_view(), name='item-image-set-primary'),
-    
+
     # Search endpoint
     path('search/', SearchView.as_view(), name='search'),
 ]
