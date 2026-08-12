@@ -89,24 +89,38 @@ jobs:
               if not path.is_file() or path.suffix not in {'.ts', '.tsx'}:
                   continue
               lines = path.read_text(encoding='utf-8').splitlines()
-              for index, line in enumerate(lines):
-                  if "@/lib/" not in line:
+              i = 0
+              while i < len(lines):
+                  stripped = lines[i].strip()
+                  if not stripped.startswith('import '):
+                      i += 1
                       continue
-                  start = index
-                  while start > 0 and ('from ' not in lines[start] or "@/lib/" not in lines[start]):
-                      start -= 1
-                      if start < index - 12:
-                          start = index
-                          break
-                  end = index
-                  statement = lines[index].strip()
-                  if statement.startswith('}') and start < index:
-                      statement = ' '.join(part.strip() for part in lines[start:index + 1])
-                  matches.append(f"{path}:{index + 1} {statement}")
-          text = ' || '.join(matches)
-          text = re.sub(r'\s+', ' ', text)[:60000]
-          text = text.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
-          print(f"::notice title=frontend lib contracts::{text}")
+                  start_line = i + 1
+                  parts = [stripped]
+                  while ';' not in parts[-1] and i + 1 < len(lines):
+                      i += 1
+                      parts.append(lines[i].strip())
+                  statement = ' '.join(parts)
+                  if "@/lib/" in statement:
+                      matches.append(f"{path}:{start_line} {statement}")
+                  i += 1
+
+          chunks = []
+          current = ''
+          for entry in matches:
+              candidate = entry if not current else current + ' || ' + entry
+              if len(candidate) > 7000 and current:
+                  chunks.append(current)
+                  current = entry
+              else:
+                  current = candidate
+          if current:
+              chunks.append(current)
+
+          for index, text in enumerate(chunks[:9], start=1):
+              text = re.sub(r'\s+', ' ', text)
+              text = text.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+              print(f"::notice title=frontend lib contracts {index}/{len(chunks)}::{text}")
           PY
       - name: Verify frontend source integrity
         run: |
