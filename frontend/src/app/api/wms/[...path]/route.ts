@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthCookies, setAuthCookies, clearAuthCookies } from '@/lib/auth/cookies';
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://backend:8000';
+const BACKEND_ORIGIN = new URL(BACKEND_URL).origin;
+const REDIRECT_STATUSES = new Set([301, 302, 307, 308]);
 
 // 需要过滤的 hop-by-hop headers + cookie（不转发给 Django）
 const FILTERED_HEADERS = new Set([
@@ -25,6 +27,56 @@ async function safeJsonParse(response: Response): Promise<any> {
   } catch {
     return { detail: text || 'Unknown error' };
   }
+}
+
+function unsafeRedirectResponse(): Response {
+  return new Response(
+    JSON.stringify({
+      code: 'UNSAFE_BACKEND_REDIRECT',
+      detail: 'Backend attempted to redirect the authenticated proxy request outside the configured backend origin.',
+    }),
+    {
+      status: 502,
+      headers: { 'Content-Type': 'application/json' },
+    }
+  );
+}
+
+async function followBackendRedirectOnce(
+  response: Response,
+  currentUrl: URL,
+  method: string,
+  headers: Headers,
+  body: ArrayBuffer | null,
+): Promise<Response> {
+  if (!REDIRECT_STATUSES.has(response.status)) {
+    return response;
+  }
+
+  const redirectUrl = response.headers.get('location');
+  if (!redirectUrl) {
+    return response;
+  }
+
+  let absoluteUrl: URL;
+  try {
+    absoluteUrl = new URL(redirectUrl, currentUrl);
+  } catch {
+    return unsafeRedirectResponse();
+  }
+
+  // Authorization is deliberately retained for Django's same-origin slash or
+  // canonical redirects, but it must never be forwarded to another origin.
+  if (absoluteUrl.origin !== BACKEND_ORIGIN) {
+    return unsafeRedirectResponse();
+  }
+
+  return fetch(absoluteUrl.toString(), {
+    method,
+    headers,
+    body: body && body.byteLength > 0 ? body : undefined,
+    redirect: 'manual',
+  });
 }
 
 async function proxyRequest(
@@ -73,20 +125,7 @@ async function proxyRequest(
     body: body && body.byteLength > 0 ? body : undefined,
     redirect: 'manual',
   });
-  
-  // 手动处理重定向，保留 Authorization header
-  if (response.status === 301 || response.status === 302 || response.status === 307 || response.status === 308) {
-    const redirectUrl = response.headers.get('location');
-    if (redirectUrl) {
-      const absoluteUrl = new URL(redirectUrl, url);
-      response = await fetch(absoluteUrl.toString(), {
-        method,
-        headers,
-        body: body && body.byteLength > 0 ? body : undefined,
-        redirect: 'manual',
-      });
-    }
-  }
+  response = await followBackendRedirectOnce(response, url, method, headers, body);
   
   // 处理 401：尝试刷新 token 并重试一次（仅当未重试过）
   if (response.status === 401 && !isRetried && refreshToken) {
@@ -112,20 +151,7 @@ async function proxyRequest(
           body: body && body.byteLength > 0 ? body : undefined,
           redirect: 'manual',
         });
-        
-        // 手动处理重定向
-        if (response.status === 301 || response.status === 302 || response.status === 307 || response.status === 308) {
-          const redirectUrl = response.headers.get('location');
-          if (redirectUrl) {
-            const absoluteUrl = new URL(redirectUrl, url);
-            response = await fetch(absoluteUrl.toString(), {
-              method,
-              headers,
-              body: body && body.byteLength > 0 ? body : undefined,
-              redirect: 'manual',
-            });
-          }
-        }
+        response = await followBackendRedirectOnce(response, url, method, headers, body);
       } else {
         // 刷新失败，返回 401
         await clearAuthCookies();

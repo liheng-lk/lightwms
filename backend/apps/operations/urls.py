@@ -16,10 +16,12 @@ from .ledger_views import (
 from .permission_views import (
     ItemBorrowView,
     ItemReturnView,
-    BorrowRecordListView,
     RecentBorrowersView,
     ItemTakeView,
     ItemReplenishView,
+)
+from .query_views import (
+    BorrowRecordListView,
     TakeRecordListView,
     ReplenishRecordListView,
 )
