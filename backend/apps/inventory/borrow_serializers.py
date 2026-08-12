@@ -9,20 +9,31 @@ from .serializers import ItemSerializer
 class BorrowAwareItemSerializer(ItemSerializer):
     """Item detail serializer with all active borrow records.
 
-    Existing single-value fields remain for compatibility. New clients should
-    use `active_borrows` whenever quantity > 1 can produce concurrent borrows.
+    Existing singular borrow fields remain for backward compatibility, but are
+    populated only when exactly one active record exists. New clients should
+    use `active_borrows` for quantity-aware behavior.
     """
     active_borrows = serializers.SerializerMethodField()
 
     class Meta(ItemSerializer.Meta):
         fields = list(ItemSerializer.Meta.fields) + ['active_borrows']
 
+    def _active_records(self, obj):
+        cache_name = '_borrow_aware_active_records'
+        if not hasattr(obj, cache_name):
+            records = list(
+                obj.borrow_records.filter(status=BorrowStatus.ACTIVE)
+                .select_related('borrower')
+                .order_by('id')
+            )
+            setattr(obj, cache_name, records)
+        return getattr(obj, cache_name)
+
+    def _single_active_record(self, obj):
+        records = self._active_records(obj)
+        return records[0] if len(records) == 1 else None
+
     def get_active_borrows(self, obj):
-        records = (
-            obj.borrow_records.filter(status=BorrowStatus.ACTIVE)
-            .select_related('borrower')
-            .order_by('id')
-        )
         return [
             {
                 'id': record.id,
@@ -32,5 +43,27 @@ class BorrowAwareItemSerializer(ItemSerializer):
                 'expected_return_date': record.expected_return_date,
                 'computed_status': record.computed_status,
             }
-            for record in records
+            for record in self._active_records(obj)
         ]
+
+    def get_current_borrower(self, obj):
+        record = self._single_active_record(obj)
+        return record.borrower.username if record else None
+
+    def get_current_borrow_record_id(self, obj):
+        record = self._single_active_record(obj)
+        return record.id if record else None
+
+    def get_current_expected_return_date(self, obj):
+        record = self._single_active_record(obj)
+        return record.expected_return_date if record else None
+
+    def get_days_overdue(self, obj):
+        record = self._single_active_record(obj)
+        if not record:
+            return None
+        from django.utils import timezone
+        today = timezone.localdate()
+        if record.expected_return_date < today:
+            return (today - record.expected_return_date).days
+        return 0
