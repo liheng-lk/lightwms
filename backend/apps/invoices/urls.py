@@ -3,15 +3,17 @@ URL configuration for invoices app.
 """
 from django.urls import path
 
-from .permission_views import (
+from .hardened_views import (
     InvoiceListCreateView,
     InvoiceDetailView,
+    InvoiceBatchStatusUpdateView,
+    InvoiceBatchDeleteView,
+)
+from .permission_views import (
     InvoiceStatusUpdateView,
     InvoiceExportView,
     InvoiceCategoriesView,
     InvoiceMonthsView,
-    InvoiceBatchStatusUpdateView,
-    InvoiceBatchDeleteView,
 )
 
 urlpatterns = [
