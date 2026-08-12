@@ -6,6 +6,8 @@ from django.urls import path
 from .views import (
     BorrowRecordDeleteView,
     BorrowRecordBatchDeleteView,
+)
+from .ledger_views import (
     TakeRecordDeleteView,
     TakeRecordBatchDeleteView,
     ReplenishRecordDeleteView,
