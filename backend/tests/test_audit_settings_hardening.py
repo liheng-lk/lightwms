@@ -1,9 +1,12 @@
 """Hardening tests for audit/login logs and system settings."""
+from io import BytesIO
 from pathlib import Path
 
 import pytest
 from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import DatabaseError, transaction
+from PIL import Image
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -57,6 +60,12 @@ def make_login(user, *, success=True):
         ip='127.0.0.1',
         user_agent='pytest',
     )
+
+
+def valid_png_bytes():
+    output = BytesIO()
+    Image.new('RGBA', (2, 2), (255, 255, 255, 255)).save(output, format='PNG')
+    return output.getvalue()
 
 
 @pytest.mark.django_db
@@ -130,8 +139,9 @@ class TestAuditImmutability:
     def test_queryset_update_cannot_modify_audit_log(self, admin):
         audit = make_audit(admin)
 
-        with pytest.raises(PermissionError):
-            AuditLog.objects.filter(pk=audit.pk).update(action=AuditAction.DELETE)
+        with pytest.raises(DatabaseError):
+            with transaction.atomic():
+                AuditLog.objects.filter(pk=audit.pk).update(action=AuditAction.DELETE)
 
         audit.refresh_from_db()
         assert audit.action == AuditAction.UPDATE
@@ -139,8 +149,9 @@ class TestAuditImmutability:
     def test_queryset_delete_cannot_remove_audit_log(self, admin):
         audit = make_audit(admin)
 
-        with pytest.raises(PermissionError):
-            AuditLog.objects.filter(pk=audit.pk).delete()
+        with pytest.raises(DatabaseError):
+            with transaction.atomic():
+                AuditLog.objects.filter(pk=audit.pk).delete()
 
         assert AuditLog.objects.filter(pk=audit.pk).exists()
 
@@ -248,17 +259,16 @@ class TestLogoFileLifecycle:
         assert not SystemSettings.objects.filter(key=SystemSettings.LOGO_FILE).exists()
 
     def test_valid_logo_upload_writes_system_audit_and_file(self, admin):
-        # Minimal valid 1x1 PNG.
-        png = bytes.fromhex(
-            '89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489'
-            '0000000d49444154789c6360000000020001e221bc330000000049454e44ae426082'
-        )
         client = APIClient()
         client.force_authenticate(user=admin)
 
         response = client.post(
             '/api/v1/system-settings/upload-logo/',
-            {'logo': SimpleUploadedFile('logo.png', png, content_type='image/png')},
+            {
+                'logo': SimpleUploadedFile(
+                    'logo.png', valid_png_bytes(), content_type='image/png'
+                )
+            },
             format='multipart',
         )
 
