@@ -61,7 +61,8 @@ export default function ItemsPage() {
   // Permission checks
   const isSuperAdmin = user?.role === 'super_admin';
   const isItemManager = user?.role === 'item_manager';
-  const canBatchUpdateLocation = isSuperAdmin || isItemManager;
+  const canManageBulkActions = isSuperAdmin || isItemManager;
+  const canBatchUpdateLocation = canManageBulkActions;
   const canBatchUpdateOwner = isSuperAdmin;
   
   const keyword = searchParams.get('keyword') || undefined;
@@ -193,7 +194,7 @@ export default function ItemsPage() {
               '点击物品行可查看详情和操作历史',
               '可重复使用物品支持借用/归还操作',
               '消耗品支持领用/补货操作',
-              '支持批量导入导出物品数据',
+              '管理员支持批量导入导出物品数据',
               '勾选物品后可批量打印条码标签',
             ]}
           />
@@ -223,37 +224,39 @@ export default function ItemsPage() {
               )}
             </>
           )}
-          {/* Import/Export dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline">
-                <MoreHorizontal className="h-4 w-4 mr-2" />
-                更多操作
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {canCreate() && (
-                <DropdownMenuItem onClick={() => setShowImportDialog(true)}>
-                  <Upload className="h-4 w-4 mr-2" />
-                  导入物品
+          {/* Import/Export dropdown is a management-only surface. */}
+          {canManageBulkActions && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline">
+                  <MoreHorizontal className="h-4 w-4 mr-2" />
+                  更多操作
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {isSuperAdmin && (
+                  <DropdownMenuItem onClick={() => setShowImportDialog(true)}>
+                    <Upload className="h-4 w-4 mr-2" />
+                    导入物品
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem 
+                  onClick={handleExport}
+                  disabled={exportMutation.isPending}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  {exportMutation.isPending ? '导出中...' : '导出物品'}
                 </DropdownMenuItem>
-              )}
-              <DropdownMenuItem 
-                onClick={handleExport}
-                disabled={exportMutation.isPending}
-              >
-                <Download className="h-4 w-4 mr-2" />
-                {exportMutation.isPending ? '导出中...' : '导出物品'}
-              </DropdownMenuItem>
-              <DropdownMenuItem 
-                onClick={handleDownloadTemplate}
-                disabled={downloadTemplateMutation.isPending}
-              >
-                <FileSpreadsheet className="h-4 w-4 mr-2" />
-                下载导入模板
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                <DropdownMenuItem 
+                  onClick={handleDownloadTemplate}
+                  disabled={downloadTemplateMutation.isPending}
+                >
+                  <FileSpreadsheet className="h-4 w-4 mr-2" />
+                  下载导入模板
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
           
           {canCreate() && (
             <Button onClick={() => setShowCreateDialog(true)}>
@@ -374,11 +377,13 @@ export default function ItemsPage() {
       />
 
       {/* 导入物品弹窗 */}
-      <ImportDialog
-        open={showImportDialog}
-        onOpenChange={setShowImportDialog}
-        onSuccess={handleImportSuccess}
-      />
+      {isSuperAdmin && (
+        <ImportDialog
+          open={showImportDialog}
+          onOpenChange={setShowImportDialog}
+          onSuccess={handleImportSuccess}
+        />
+      )}
 
       {/* 批量打印条码弹窗 */}
       <BarcodePrintDialog

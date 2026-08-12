@@ -23,7 +23,6 @@ from .views import (
     SearchView,
 )
 from .permission_views import (
-    ItemListCreateView,
     ItemDetailView,
     ItemDeactivateView,
     ItemDeleteView,
@@ -32,14 +31,14 @@ from .permission_views import (
     ItemImageListCreateView,
     ItemImageDetailView,
     ItemImageSetPrimaryView,
-    ItemCreateWithInvoiceView,
     ItemBatchUpdateLocationView,
     ItemBatchUpdateOwnerView,
 )
+from .validated_views import ItemListCreateView, ItemCreateWithInvoiceView
 
-from apps.imports.views import (
-    ItemExportView,
+from apps.imports.permission_views import (
     ItemImportView,
+    ItemExportView,
     ItemImportTemplateView,
     BorrowRecordExportView,
     TakeRecordExportView,
