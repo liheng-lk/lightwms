@@ -1,16 +1,41 @@
-"""Borrow-aware inventory serializers."""
+"""Borrow-aware inventory serializers and queryset helpers."""
+from django.db.models import Prefetch
 from rest_framework import serializers
 
-from apps.operations.models import BorrowStatus
+from apps.operations.models import BorrowRecord, BorrowStatus
 from apps.users.models import UserRole
 
 from .serializers import ItemByBarcodeSerializer, ItemSerializer
+
+
+def prefetch_active_borrows(queryset):
+    """Prefetch only active borrow rows needed by borrow-aware serializers.
+
+    Using a dedicated ``to_attr`` avoids altering the normal related manager
+    while preventing one query per item when list/search endpoints expose the
+    role-scoped borrow presentation.
+    """
+    return queryset.prefetch_related(
+        Prefetch(
+            'borrow_records',
+            queryset=(
+                BorrowRecord.objects.filter(status=BorrowStatus.ACTIVE)
+                .select_related('borrower')
+                .order_by('id')
+            ),
+            to_attr='_prefetched_active_borrow_records',
+        )
+    )
 
 
 class ActiveBorrowMixin:
     """Reusable helpers for serializing role-scoped active borrow state."""
 
     def _all_active_records(self, obj):
+        prefetched = getattr(obj, '_prefetched_active_borrow_records', None)
+        if prefetched is not None:
+            return prefetched
+
         cache_name = '_borrow_aware_all_active_records'
         if not hasattr(obj, cache_name):
             records = list(
@@ -55,11 +80,11 @@ class ActiveBorrowMixin:
 
 
 class BorrowAwareItemSerializer(ActiveBorrowMixin, ItemSerializer):
-    """Item detail serializer with role-scoped active borrow records.
+    """Item serializer with role-scoped active borrow records.
 
     Existing singular borrow fields remain for backward compatibility, but are
     populated only when exactly one *visible* active record exists. New clients
-    should use `active_borrows` for quantity-aware behavior.
+    should use ``active_borrows`` for quantity-aware behavior.
     """
     active_borrows = serializers.SerializerMethodField()
 
@@ -87,6 +112,16 @@ class BorrowAwareItemSerializer(ActiveBorrowMixin, ItemSerializer):
         if record.expected_return_date < today:
             return (today - record.expected_return_date).days
         return 0
+
+    def get_borrowed_quantity(self, obj):
+        if not obj.is_reusable:
+            return 0
+        return sum(record.quantity for record in self._all_active_records(obj))
+
+    def get_available_quantity(self, obj):
+        if obj.is_reusable:
+            return obj.quantity - self.get_borrowed_quantity(obj)
+        return obj.quantity
 
 
 class BorrowAwareBarcodeSerializer(ActiveBorrowMixin, ItemByBarcodeSerializer):
