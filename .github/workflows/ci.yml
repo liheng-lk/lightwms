@@ -78,6 +78,22 @@ jobs:
           node-version: '20'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      - name: Report frontend lib contracts
+        run: |
+          python - <<'PY'
+          import re
+          from pathlib import Path
+
+          for path in sorted(Path('src').rglob('*')):
+              if not path.is_file() or path.suffix not in {'.ts', '.tsx'}:
+                  continue
+              for line_no, line in enumerate(path.read_text(encoding='utf-8').splitlines(), start=1):
+                  if "@/lib/" not in line:
+                      continue
+                  text = re.sub(r'\s+', ' ', line.strip())[:1000]
+                  text = text.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+                  print(f"::notice file={path},line={line_no},title=frontend lib contract::{text}")
+          PY
       - name: Verify frontend source integrity
         run: |
           test -d src/lib || (echo "ERROR: frontend/src/lib is missing from Git. Check root .gitignore and restore the source directory." && exit 1)
@@ -85,4 +101,21 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci --legacy-peer-deps
       - name: Build frontend
-        run: npm run build:ci
+        shell: bash
+        run: |
+          set +e
+          npm run build:ci 2>&1 | tee build.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            python - <<'PY'
+          import re
+          from pathlib import Path
+
+          log = Path('build.log').read_text(encoding='utf-8', errors='replace')
+          tail = '\n'.join(log.splitlines()[-80:])
+          tail = re.sub(r'\s+', ' ', tail)[:7000]
+          tail = tail.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          print(f"::error title=frontend build::{tail}")
+          PY
+          fi
+          exit "$status"
