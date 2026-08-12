@@ -3,9 +3,9 @@ URL configuration for users app.
 """
 from django.urls import path
 
+from .security_views import LogoutView
 from .views import (
     LoginView,
-    LogoutView,
     RefreshView,
     UserMeView,
     UserListView,
@@ -33,8 +33,8 @@ auth_urlpatterns = [
     path('refresh/', RefreshView.as_view(), name='refresh'),
     path('wechat/authorize/', WechatAuthorizeView.as_view(), name='wechat-authorize'),
     path('wechat/callback/', WechatCallbackView.as_view(), name='wechat-callback'),
-    path('register/', SimpleRegisterView.as_view(), name='register'),  # Use simple register by default
-    path('register/wechat/', RegisterView.as_view(), name='register-wechat'),  # WeChat register
+    path('register/', SimpleRegisterView.as_view(), name='register'),
+    path('register/wechat/', RegisterView.as_view(), name='register-wechat'),
 ]
 
 # User endpoints
