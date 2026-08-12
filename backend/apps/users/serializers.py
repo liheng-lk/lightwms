@@ -20,7 +20,7 @@ def validate_account_password(value: str) -> str:
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     """Custom token serializer to add additional claims."""
-    
+
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)
@@ -105,6 +105,14 @@ class InviteCodeUpdateSerializer(serializers.Serializer):
     expires_at = serializers.DateTimeField(required=False, allow_null=True)
     is_active = serializers.BooleanField(required=False)
 
+    def validate_max_uses(self, value):
+        invite_code = self.instance
+        if invite_code is not None and value < invite_code.current_uses:
+            raise serializers.ValidationError(
+                'max_uses cannot be lower than the number of times already used.'
+            )
+        return value
+
 
 class WechatAuthorizeResponseSerializer(serializers.Serializer):
     authorize_url = serializers.URLField()
@@ -112,7 +120,7 @@ class WechatAuthorizeResponseSerializer(serializers.Serializer):
 
 class WechatCallbackSerializer(serializers.Serializer):
     code = serializers.CharField(max_length=200)
-    state = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    state = serializers.CharField(max_length=100)
 
 
 class WechatCallbackResponseSerializer(serializers.Serializer):
