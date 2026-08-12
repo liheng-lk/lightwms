@@ -1,75 +1,83 @@
-"""
-RBAC Permission classes for LightWMS.
-
-Uses User model properties (is_super_admin, is_item_manager, is_read_only_user)
-for role checks instead of string comparisons to avoid typos and case issues.
-"""
+"""RBAC permission classes for LightWMS."""
 from rest_framework.permissions import BasePermission, SAFE_METHODS
 
-from core.role_utils import is_super_admin, is_item_manager
+from core.role_utils import is_super_admin, is_item_manager, is_read_only_user
 
 
 class IsSuperAdmin(BasePermission):
-    """Permission class for Super Admin only access."""
-    
+    """Super Admin only."""
+
     def has_permission(self, request, view):
         return is_super_admin(request.user)
 
 
 class IsItemManagerOrSuperAdmin(BasePermission):
-    """Permission class for Item Manager or Super Admin access."""
-    
+    """Inventory-management role or Super Admin."""
+
     def has_permission(self, request, view):
-        if not request.user.is_authenticated:
+        return is_super_admin(request.user) or is_item_manager(request.user)
+
+
+class IsOrdinaryUser(BasePermission):
+    """Ordinary warehouse user only."""
+
+    def has_permission(self, request, view):
+        return is_read_only_user(request.user)
+
+
+class IsAuthenticatedInventoryAccess(BasePermission):
+    """
+    Authenticated users may read inventory; only managers/admins may mutate it.
+
+    This is the default permission boundary for inventory master-data endpoints.
+    """
+
+    def has_permission(self, request, view):
+        if not getattr(request.user, 'is_authenticated', False):
             return False
+        if request.method in SAFE_METHODS:
+            return True
         return is_super_admin(request.user) or is_item_manager(request.user)
 
 
 class IsItemOwner(BasePermission):
-    """Permission class for item owner or Super Admin."""
-    
+    """Item owner or Super Admin."""
+
     def has_object_permission(self, request, view, obj):
-        if not request.user.is_authenticated:
+        if not getattr(request.user, 'is_authenticated', False):
             return False
         if is_super_admin(request.user):
             return True
-        return getattr(obj, 'owner_id', None) == request.user.id
+        return is_item_manager(request.user) and getattr(obj, 'owner_id', None) == request.user.id
 
 
 class IsReadOnly(BasePermission):
-    """Permission class for read-only access."""
-    
     def has_permission(self, request, view):
         return request.method in SAFE_METHODS
 
 
 class CanBorrowReturn(BasePermission):
     """
-    Permission class for borrow/return operations.
-    - Owner and Super Admin can borrow
-    - Owner, Super Admin, and current borrower can return
+    Borrow: item owner or Super Admin.
+    Return: item owner, Super Admin, or the current borrower.
     """
-    
+
     def has_object_permission(self, request, view, obj):
-        if not request.user.is_authenticated:
+        if not getattr(request.user, 'is_authenticated', False):
             return False
-        
+
         user = request.user
-        
-        # Super Admin can do anything
         if is_super_admin(user):
             return True
-        
-        # Owner can borrow and return
-        if getattr(obj, 'owner_id', None) == user.id:
+
+        if is_item_manager(user) and getattr(obj, 'owner_id', None) == user.id:
             return True
-        
-        # For return action, check if user is the current borrower
+
         if getattr(view, 'action', None) == 'return_item':
-            active_borrow = getattr(obj, 'borrow_records', None)
-            if active_borrow:
-                active_record = active_borrow.filter(status='active').first()
-                if active_record and active_record.borrower_id == user.id:
-                    return True
-        
+            active_borrows = getattr(obj, 'borrow_records', None)
+            if active_borrows:
+                return active_borrows.filter(
+                    status='active', borrower_id=user.id
+                ).exists()
+
         return False
