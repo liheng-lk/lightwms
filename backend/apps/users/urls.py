@@ -3,7 +3,7 @@ URL configuration for users app.
 """
 from django.urls import path
 
-from .security_views import LogoutView
+from .security_views import InviteCodeDetailView, LogoutView
 from .views import (
     LoginView,
     RefreshView,
@@ -17,7 +17,6 @@ from .views import (
     UserEnableView,
     UserUpdateRoleView,
     InviteCodeListCreateView,
-    InviteCodeDetailView,
     WechatAuthorizeView,
     WechatCallbackView,
     RegisterView,
