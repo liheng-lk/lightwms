@@ -31,6 +31,7 @@ jobs:
         working-directory: backend
     env:
       DATABASE_URL: postgres://lightwms:lightwms_test_password@127.0.0.1:5432/lightwms_test
+      DJANGO_SETTINGS_MODULE: config.settings.test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -40,6 +41,12 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - name: Install backend dependencies
         run: pip install -r requirements.txt
+      - name: Django system check
+        run: python manage.py check
+      - name: Verify migration files are current
+        run: python manage.py makemigrations --check --dry-run
+      - name: Apply migrations on a clean PostgreSQL database
+        run: python manage.py migrate --noinput
       - name: Run backend tests
         shell: bash
         run: |
@@ -111,22 +118,7 @@ jobs:
           test -f src/lib/utils.ts || (echo "ERROR: frontend/src/lib/utils.ts is missing." && exit 1)
       - name: Install frontend dependencies
         run: npm ci --legacy-peer-deps
+      - name: Type-check frontend
+        run: npx tsc --noEmit --pretty false
       - name: Build frontend
-        shell: bash
-        run: |
-          set +e
-          npm run build:ci 2>&1 | tee build.log
-          status=${PIPESTATUS[0]}
-          if [ "$status" -ne 0 ]; then
-            python - <<'PY'
-          import re
-          from pathlib import Path
-
-          log = Path('build.log').read_text(encoding='utf-8', errors='replace')
-          tail = '\n'.join(log.splitlines()[-120:])
-          tail = re.sub(r'\s+', ' ', tail)[:12000]
-          tail = tail.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
-          print(f"::error title=frontend build::{tail}")
-          PY
-          fi
-          exit "$status"
+        run: npm run build:ci
