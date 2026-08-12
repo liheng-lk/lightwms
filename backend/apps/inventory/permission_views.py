@@ -76,9 +76,6 @@ def _validate_requested_owner(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    # A manager must never create inventory directly inside another manager's
-    # security scope. Only a super admin can make an explicit cross-owner
-    # assignment.
     if is_item_manager(request.user) and owner.id != request.user.id:
         return Response(
             {'code': 'PERMISSION_DENIED', 'message': 'Permission denied.', 'details': None},
@@ -149,8 +146,6 @@ class ItemListCreateView(BaseItemListCreateView):
         else:
             qs = ItemService.list_active()
 
-        # Managers operate in their own ownership scope. Ordinary users may
-        # browse all active inventory, but cannot mutate it.
         if is_item_manager(user):
             qs = qs.filter(owner_id=user.id)
 
@@ -164,7 +159,7 @@ class ItemListCreateView(BaseItemListCreateView):
 
 
 class _OwnedItemMixin:
-    """Manager sees only owned items; super admin sees all; ordinary read is allowed."""
+    """Apply detail visibility consistently with list/search visibility."""
 
     def get_object(self, pk, user):
         try:
@@ -174,6 +169,8 @@ class _OwnedItemMixin:
         except Item.DoesNotExist:
             return None
 
+        if not item.is_active and not is_super_admin(user):
+            return None
         if is_item_manager(user) and item.owner_id != user.id:
             return None
         return item
@@ -193,10 +190,6 @@ class ItemDetailView(_OwnedItemMixin, BaseItemDetailView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        # Consumable stock is an operational ledger value. Allowing PATCH to
-        # silently ignore quantity produces a false-success response and lets
-        # callers believe stock changed when it did not. Stock must move via
-        # take/replenish operations instead.
         if item.type == ItemType.CONSUMABLE and 'quantity' in request.data:
             return Response(
                 {
@@ -209,10 +202,6 @@ class ItemDetailView(_OwnedItemMixin, BaseItemDetailView):
 
         response = super().patch(request, pk)
 
-        # Reducing reusable total quantity can make an item fully borrowed.
-        # Keep the persisted status consistent with available_quantity so list
-        # filters and dashboard counts do not report an unavailable item as
-        # "available".
         if response.status_code == status.HTTP_200_OK and 'quantity' in request.data:
             refreshed = Item.objects.select_related(
                 'category', 'location', 'location__warehouse', 'owner'
@@ -297,21 +286,36 @@ class ItemGenerateBarcodeView(BaseItemGenerateBarcodeView):
         return super().post(request, pk)
 
 
-class ItemImageListCreateView(BaseItemImageListCreateView):
+class _VisibleImageItemMixin:
+    """Apply the same inactive/owner visibility rules to image subresources."""
+
+    def get_item(self, pk, user):
+        try:
+            item = Item.objects.select_related('owner').get(pk=pk)
+        except Item.DoesNotExist:
+            return None
+        if not item.is_active and not is_super_admin(user):
+            return None
+        if is_item_manager(user) and item.owner_id != user.id:
+            return None
+        return item
+
+
+class ItemImageListCreateView(_VisibleImageItemMixin, BaseItemImageListCreateView):
     def get_permissions(self):
         if self.request.method == 'POST':
             return [IsItemManagerOrSuperAdmin()]
         return [IsAuthenticated()]
 
 
-class ItemImageDetailView(BaseItemImageDetailView):
+class ItemImageDetailView(_VisibleImageItemMixin, BaseItemImageDetailView):
     def get_permissions(self):
         if self.request.method == 'DELETE':
             return [IsItemManagerOrSuperAdmin()]
         return [IsAuthenticated()]
 
 
-class ItemImageSetPrimaryView(BaseItemImageSetPrimaryView):
+class ItemImageSetPrimaryView(_VisibleImageItemMixin, BaseItemImageSetPrimaryView):
     permission_classes = [IsItemManagerOrSuperAdmin]
 
 
@@ -323,9 +327,6 @@ class ItemCreateWithInvoiceView(BaseItemCreateWithInvoiceView):
         if owner_error:
             return owner_error
 
-        # Validate all invoice metadata before the base view creates the item.
-        # The previous ordering could return 400 after the item had already
-        # persisted, leaving an invisible/duplicate-prone "ghost" item.
         if 'invoice_file' in request.FILES:
             invoice_amount = request.data.get('invoice_amount')
             invoice_category = request.data.get('invoice_category')
@@ -386,9 +387,6 @@ class ItemBatchDeleteView(BaseItemBatchDeleteView):
         user_agent = getattr(request, 'user_agent', request.META.get('HTTP_USER_AGENT', ''))
 
         try:
-            # Permission and business validation must be all-or-nothing. If any
-            # deletion fails, leaving this atomic block rolls the entire batch
-            # back instead of silently returning 204 after a partial delete.
             with transaction.atomic():
                 _, preflight_error = _preflight_owned_items(request, item_ids)
                 if preflight_error:
@@ -422,7 +420,6 @@ class ItemBatchUpdateLocationView(BaseItemBatchUpdateLocationView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Check the entire requested batch before the service mutates anything.
         with transaction.atomic():
             _, preflight_error = _preflight_owned_items(
                 request, item_ids, active_only=True
@@ -435,11 +432,24 @@ class ItemBatchUpdateLocationView(BaseItemBatchUpdateLocationView):
 
 
 class ItemBatchUpdateOwnerView(BaseItemBatchUpdateOwnerView):
-    # Reassigning ownership changes another manager's security boundary, so it
-    # is a system-administration operation rather than normal stock handling.
     permission_classes = [IsSuperAdmin]
 
     def post(self, request):
+        item_ids = _normalise_item_ids(request.data.get('item_ids'))
+        if item_ids is None:
+            return Response(
+                {'code': 'NO_ITEM_IDS', 'message': '请选择要更改的物品', 'details': None},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            _, preflight_error = _preflight_owned_items(
+                request, item_ids, active_only=True
+            )
+            if preflight_error:
+                transaction.set_rollback(True)
+                return preflight_error
+
         raw_owner_id = request.data.get('owner_id')
         try:
             owner = User.objects.get(pk=int(raw_owner_id))
