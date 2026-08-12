@@ -7,6 +7,16 @@ import { apiFetch, queryString } from '../api/client';
 
 const DEFAULT_PAGE_SIZE = 20;
 
+type LoginLogFilters = {
+  page?: number;
+  page_size?: number;
+  username?: string;
+  success?: boolean | string;
+  date_from?: string;
+  date_to?: string;
+  [key: string]: unknown;
+};
+
 export function useAuditLogs(initial: AuditLogFilters = {}) {
   const initialFilters = useMemo<AuditLogFilters>(
     () => ({ page: 1, page_size: DEFAULT_PAGE_SIZE, ...initial }),
@@ -33,8 +43,8 @@ export function useAuditLogs(initial: AuditLogFilters = {}) {
   return { ...query, filters, updateFilters, setPage, resetFilters };
 }
 
-export function useLoginLogs(initial: Record<string, unknown> = {}) {
-  const [filters, setFilters] = useState<Record<string, unknown>>({
+export function useLoginLogs(initial: LoginLogFilters = {}) {
+  const [filters, setFilters] = useState<LoginLogFilters>({
     page: 1,
     page_size: DEFAULT_PAGE_SIZE,
     ...initial,
