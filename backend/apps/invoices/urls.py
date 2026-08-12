@@ -8,10 +8,10 @@ from .hardened_views import (
     InvoiceDetailView,
     InvoiceBatchStatusUpdateView,
     InvoiceBatchDeleteView,
+    InvoiceExportView,
 )
 from .permission_views import (
     InvoiceStatusUpdateView,
-    InvoiceExportView,
     InvoiceCategoriesView,
     InvoiceMonthsView,
 )
