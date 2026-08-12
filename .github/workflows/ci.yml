@@ -41,7 +41,30 @@ jobs:
       - name: Install backend dependencies
         run: pip install -r requirements.txt
       - name: Run backend tests
-        run: pytest
+        shell: bash
+        run: |
+          set +e
+          pytest --junitxml=pytest-results.xml
+          status=$?
+          python - <<'PY'
+          import re
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          report = Path('pytest-results.xml')
+          if report.exists():
+              root = ET.parse(report).getroot()
+              for case in root.iter('testcase'):
+                  problem = case.find('failure') or case.find('error')
+                  if problem is None:
+                      continue
+                  name = f"{case.get('classname', '')}.{case.get('name', '')}".strip('.')
+                  message = problem.get('message') or (problem.text or '').strip()
+                  message = re.sub(r'\s+', ' ', message)[:4000]
+                  message = message.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+                  print(f"::error title=pytest {name}::{message}")
+          PY
+          exit "$status"
 
   frontend-build:
     runs-on: ubuntu-latest
