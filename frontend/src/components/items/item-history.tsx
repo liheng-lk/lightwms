@@ -16,19 +16,14 @@ interface ItemHistoryProps {
 }
 
 export function ItemHistory({ itemId, itemType }: ItemHistoryProps) {
-  // Determine if this is a reusable item (can be borrowed) or consumable (can be taken/replenished)
   const isReusable = itemType === 'reusable';
   const isConsumable = itemType === 'consumable';
-  
-  // Determine default tab based on item type
   const defaultTab = isConsumable ? 'take' : 'borrow';
   
   return (
     <Tabs defaultValue={defaultTab} className="w-full">
       <TabsList className={`grid w-full ${isConsumable ? 'grid-cols-2' : 'grid-cols-1'}`}>
-        {isReusable && (
-          <TabsTrigger value="borrow">借用记录</TabsTrigger>
-        )}
+        {isReusable && <TabsTrigger value="borrow">借用记录</TabsTrigger>}
         {isConsumable && (
           <>
             <TabsTrigger value="take">领用记录</TabsTrigger>
@@ -57,7 +52,6 @@ export function ItemHistory({ itemId, itemType }: ItemHistoryProps) {
   );
 }
 
-// Format date for display
 function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleDateString('zh-CN', {
     year: 'numeric',
@@ -68,152 +62,157 @@ function formatDate(dateStr: string) {
   });
 }
 
-// Borrow Records List Component
 function BorrowRecordsList({ itemId }: { itemId: number }) {
   const { data, isLoading } = useItemBorrowRecords(itemId, { page_size: 10 });
   
-  if (isLoading) {
-    return <RecordsListSkeleton />;
-  }
-  
+  if (isLoading) return <RecordsListSkeleton />;
   const records = data?.results || [];
-  
   if (records.length === 0) {
-    return (
-      <div className="text-sm text-muted-foreground text-center py-4">
-        暂无借用记录
-      </div>
-    );
+    return <div className="text-sm text-muted-foreground text-center py-4">暂无借用记录</div>;
   }
   
   return (
     <div className="space-y-3">
-      {records.map((record: BorrowRecord) => (
-        <div key={record.id} className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
-          <div className="h-2 w-2 rounded-full bg-primary mt-2 flex-shrink-0" />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-medium">{record.borrower_username || record.borrower_name}</span>
-              <StatusBadge status={record.computed_status} type="borrow" />
+      {records.map((record: BorrowRecord) => {
+        const raw = record as any;
+        const borrowedAt = raw.created_at || raw.borrowed_at;
+        const expectedReturn = raw.expected_return_date || raw.expected_return_at;
+        const actualReturn = raw.actual_return_datetime || raw.actual_return_at;
+        const notes = raw.notes || raw.note;
+        const quantity = raw.quantity ?? 1;
+        return (
+          <div key={record.id} className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
+            <div className="h-2 w-2 rounded-full bg-primary mt-2 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-medium">{record.borrower_username || record.borrower_name}</span>
+                <span className="text-sm text-muted-foreground">
+                  借用 <span className="font-medium text-foreground">{quantity}</span> 件
+                </span>
+                <StatusBadge status={record.computed_status} type="borrow" />
+              </div>
+              {borrowedAt && (
+                <p className="text-sm text-muted-foreground mt-1">
+                  借出时间：{formatDate(borrowedAt)}
+                </p>
+              )}
+              {expectedReturn && (
+                <p className="text-sm text-muted-foreground">
+                  预计归还：{formatDate(expectedReturn)}
+                </p>
+              )}
+              {actualReturn && (
+                <p className="text-sm text-muted-foreground">
+                  实际归还：{formatDate(actualReturn)}
+                </p>
+              )}
+              {notes && (
+                <p className="text-sm text-muted-foreground mt-1">
+                  备注：{notes}
+                </p>
+              )}
+              {raw.return_notes && (
+                <p className="text-sm text-muted-foreground mt-1">
+                  归还备注：{raw.return_notes}
+                </p>
+              )}
+              {raw.condition && (
+                <p className="text-sm text-muted-foreground mt-1">
+                  归还状况：{raw.condition}
+                </p>
+              )}
             </div>
-            <p className="text-sm text-muted-foreground mt-1">
-              借出时间：{formatDate(record.borrowed_at || record.created_at || '')}
-            </p>
-            {record.expected_return_at && (
-              <p className="text-sm text-muted-foreground">
-                预计归还：{formatDate(record.expected_return_at)}
-              </p>
-            )}
-            {record.actual_return_at && (
-              <p className="text-sm text-muted-foreground">
-                实际归还：{formatDate(record.actual_return_at)}
-              </p>
-            )}
-            {record.note && (
-              <p className="text-sm text-muted-foreground mt-1">
-                备注：{record.note}
-              </p>
-            )}
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
 
-
-// Take Records List Component
 function TakeRecordsList({ itemId }: { itemId: number }) {
   const { data, isLoading } = useItemTakeRecords(itemId, { page_size: 10 });
   
-  if (isLoading) {
-    return <RecordsListSkeleton />;
-  }
-  
+  if (isLoading) return <RecordsListSkeleton />;
   const records = data?.results || [];
-  
   if (records.length === 0) {
-    return (
-      <div className="text-sm text-muted-foreground text-center py-4">
-        暂无领用记录
-      </div>
-    );
+    return <div className="text-sm text-muted-foreground text-center py-4">暂无领用记录</div>;
   }
   
   return (
     <div className="space-y-3">
-      {records.map((record: TakeRecord) => (
-        <div key={record.id} className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
-          <div className="h-2 w-2 rounded-full bg-orange-500 mt-2 flex-shrink-0" />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-medium">{record.taker_username}</span>
-              <span className="text-sm text-muted-foreground">
-                领用了 <span className="font-medium text-foreground">{record.quantity}</span> 件
-              </span>
+      {records.map((record: TakeRecord) => {
+        const raw = record as any;
+        const notes = raw.notes || raw.note;
+        return (
+          <div key={record.id} className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
+            <div className="h-2 w-2 rounded-full bg-orange-500 mt-2 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-medium">{record.taker_username}</span>
+                <span className="text-sm text-muted-foreground">
+                  领用了 <span className="font-medium text-foreground">{record.quantity}</span> 件
+                </span>
+              </div>
+              {(raw.created_at || raw.taken_at) && (
+                <p className="text-sm text-muted-foreground mt-1">
+                  领用时间：{formatDate(raw.created_at || raw.taken_at)}
+                </p>
+              )}
+              {notes && (
+                <p className="text-sm text-muted-foreground mt-1">
+                  用途：{notes}
+                </p>
+              )}
             </div>
-            <p className="text-sm text-muted-foreground mt-1">
-              领用时间：{formatDate(record.taken_at || record.created_at || '')}
-            </p>
-            {record.note && (
-              <p className="text-sm text-muted-foreground mt-1">
-                用途：{record.note}
-              </p>
-            )}
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
 
-
-// Replenish Records List Component
 function ReplenishRecordsList({ itemId }: { itemId: number }) {
   const { data, isLoading } = useItemReplenishRecords(itemId, { page_size: 10 });
   
-  if (isLoading) {
-    return <RecordsListSkeleton />;
-  }
-  
+  if (isLoading) return <RecordsListSkeleton />;
   const records = data?.results || [];
-  
   if (records.length === 0) {
-    return (
-      <div className="text-sm text-muted-foreground text-center py-4">
-        暂无补货记录
-      </div>
-    );
+    return <div className="text-sm text-muted-foreground text-center py-4">暂无补货记录</div>;
   }
   
   return (
     <div className="space-y-3">
-      {records.map((record: ReplenishRecord) => (
-        <div key={record.id} className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
-          <div className="h-2 w-2 rounded-full bg-green-500 mt-2 flex-shrink-0" />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-medium">{record.operator_username}</span>
-              <span className="text-sm text-muted-foreground">
-                补货了 <span className="font-medium text-foreground">{record.quantity}</span> 件
-              </span>
+      {records.map((record: ReplenishRecord) => {
+        const raw = record as any;
+        const notes = raw.notes || raw.note;
+        return (
+          <div key={record.id} className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
+            <div className="h-2 w-2 rounded-full bg-green-500 mt-2 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-medium">{record.operator_username}</span>
+                <span className="text-sm text-muted-foreground">
+                  补货了 <span className="font-medium text-foreground">{record.quantity}</span> 件
+                </span>
+              </div>
+              {(raw.created_at || raw.replenished_at) && (
+                <p className="text-sm text-muted-foreground mt-1">
+                  补货时间：{formatDate(raw.created_at || raw.replenished_at)}
+                </p>
+              )}
+              {notes && (
+                <p className="text-sm text-muted-foreground mt-1">
+                  来源：{notes}
+                </p>
+              )}
             </div>
-            <p className="text-sm text-muted-foreground mt-1">
-              补货时间：{formatDate(record.replenished_at || record.created_at || '')}
-            </p>
-            {record.note && (
-              <p className="text-sm text-muted-foreground mt-1">
-                来源：{record.note}
-              </p>
-            )}
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
 
-// Skeleton for loading state
 function RecordsListSkeleton() {
   return (
     <div className="space-y-3">

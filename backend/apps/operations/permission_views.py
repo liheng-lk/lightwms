@@ -6,13 +6,21 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.inventory.models import Item
+from core.exceptions import BusinessConflictError
 from core.pagination import StandardPagination
 from core.permissions import IsItemManagerOrSuperAdmin
 from core.role_utils import is_super_admin, is_item_manager, is_read_only_user
 
 from .models import BorrowRecord, BorrowStatus
-from .serializers import BorrowRecordSerializer, TakeRecordSerializer, ReplenishRecordSerializer
+from .serializers import (
+    BorrowRecordSerializer,
+    BorrowRequestSerializer,
+    ReturnRequestSerializer,
+    TakeRecordSerializer,
+    ReplenishRecordSerializer,
+)
 from .services import BorrowService, ConsumableService
+from .services.quantity_borrow_service import QuantityBorrowService
 from .views import (
     ItemBorrowView as BaseItemBorrowView,
     ItemReturnView as BaseItemReturnView,
@@ -51,38 +59,90 @@ class ItemBorrowView(BaseItemBorrowView):
     def get_object(self, pk, user):
         return _owned_item(pk, user)
 
-
-class ItemReturnView(BaseItemReturnView):
-    """Owner manager/admin or the current borrower may return an item."""
-    permission_classes = [IsAuthenticated]
-
     def post(self, request, pk):
-        item = self.get_object(pk)
+        item = self.get_object(pk, request.user)
         if not item:
             return Response(
                 {'code': 'NOT_FOUND', 'message': 'Item not found.', 'details': None},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        active = BorrowRecord.objects.filter(
-            item_id=pk, status=BorrowStatus.ACTIVE
-        ).select_related('borrower').first()
+        serializer = BorrowRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ip = getattr(request, 'client_ip', request.META.get('REMOTE_ADDR', ''))
+        user_agent = getattr(request, 'user_agent', request.META.get('HTTP_USER_AGENT', ''))
 
-        allowed = (
-            is_super_admin(request.user)
-            or (is_item_manager(request.user) and item.owner_id == request.user.id)
-            or (active is not None and active.borrower_id == request.user.id)
-        )
-        if not allowed:
-            # Do not disclose another manager/user's active transaction.
+        try:
+            record = QuantityBorrowService.borrow(
+                item_id=pk,
+                borrower_id=serializer.validated_data['borrower_id'],
+                expected_return_date=serializer.validated_data['expected_return_date'],
+                notes=serializer.validated_data.get('notes', ''),
+                operator=request.user,
+                quantity=serializer.validated_data.get('quantity', 1),
+                ip=ip,
+                user_agent=user_agent,
+            )
+        except BusinessConflictError as exc:
+            return Response(
+                {'code': exc.code, 'message': exc.message, 'details': exc.details},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        return Response(BorrowRecordSerializer(record).data, status=status.HTTP_201_CREATED)
+
+
+class ItemReturnView(BaseItemReturnView):
+    """Return one precise active borrow record while retaining legacy fallback."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        try:
+            item = Item.objects.select_related('owner', 'location', 'location__warehouse').get(pk=pk)
+        except Item.DoesNotExist:
             return Response(
                 {'code': 'NOT_FOUND', 'message': 'Item not found.', 'details': None},
                 status=status.HTTP_404_NOT_FOUND,
             )
-        return super().post(request, pk)
+
+        # Managers must stay inside their inventory scope. Borrowers are allowed
+        # to reach this point because the service resolves only their own record.
+        if is_item_manager(request.user) and item.owner_id != request.user.id:
+            return Response(
+                {'code': 'NOT_FOUND', 'message': 'Item not found.', 'details': None},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        serializer = ReturnRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ip = getattr(request, 'client_ip', request.META.get('REMOTE_ADDR', ''))
+        user_agent = getattr(request, 'user_agent', request.META.get('HTTP_USER_AGENT', ''))
+
+        try:
+            record = QuantityBorrowService.return_item(
+                item_id=pk,
+                borrow_record_id=serializer.validated_data.get('borrow_record_id'),
+                return_notes=serializer.validated_data.get('return_notes', ''),
+                condition=serializer.validated_data.get('condition', ''),
+                operator=request.user,
+                ip=ip,
+                user_agent=user_agent,
+            )
+        except BusinessConflictError as exc:
+            # Avoid disclosing another user's active transaction to ordinary users.
+            if exc.code == 'PERMISSION_DENIED' and is_read_only_user(request.user):
+                return Response(
+                    {'code': 'NOT_FOUND', 'message': 'Item not found.', 'details': None},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            return Response(
+                {'code': exc.code, 'message': exc.message, 'details': exc.details},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        return Response(BorrowRecordSerializer(record).data, status=status.HTTP_200_OK)
 
     def check_return_permission(self, item, user):
-        # The explicit relation check above is authoritative; keep base flow happy.
         return True, None
 
 
@@ -97,8 +157,6 @@ class BorrowRecordListView(BaseBorrowRecordListView):
 
         owner_id = request.user.id if is_item_manager(request.user) else None
         visible_borrower_id = request.user.id if is_read_only_user(request.user) else None
-
-        # Ordinary users cannot use borrower= to inspect another person's records.
         if is_read_only_user(request.user):
             borrower_id = request.user.id
 
