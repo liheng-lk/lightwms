@@ -9,7 +9,6 @@ from core.role_utils import is_item_manager, is_super_admin
 
 from .models import Category, Location, Warehouse
 from .serializers import LocationSerializer
-from .services import LocationService
 from .views import (
     WarehouseListCreateView as BaseWarehouseListCreateView,
     WarehouseDetailView as BaseWarehouseDetailView,
@@ -19,7 +18,7 @@ from .views import (
     LocationListCreateView as BaseLocationListCreateView,
     LocationTreeView as BaseLocationTreeView,
     LocationDetailView as BaseLocationDetailView,
-    LocationDeactivateView,
+    LocationDeactivateView as BaseLocationDeactivateView,
     CategoryListCreateView as BaseCategoryListCreateView,
     CategoryTreeView,
     CategoryDetailView as BaseCategoryDetailView,
@@ -36,6 +35,13 @@ def _not_found(resource: str):
     return Response(
         {'code': 'NOT_FOUND', 'message': f'{resource} not found.', 'details': None},
         status=status.HTTP_404_NOT_FOUND,
+    )
+
+
+def _forbidden(message='Permission denied.'):
+    return Response(
+        {'code': 'PERMISSION_DENIED', 'message': message, 'details': None},
+        status=status.HTTP_403_FORBIDDEN,
     )
 
 
@@ -264,12 +270,31 @@ class LocationDetailView(BaseLocationDetailView):
         if not location:
             return _not_found('Location')
 
+        if is_item_manager(request.user) and location.owner_id != request.user.id:
+            return _forbidden('Item managers can only modify their own locations.')
+
         if 'owner' in request.data:
             owner_error = _validate_location_owner(request, request.data.get('owner'))
             if owner_error:
                 return owner_error
 
         return super().patch(request, pk)
+
+
+class LocationDeactivateView(BaseLocationDeactivateView):
+    def post(self, request, pk):
+        try:
+            location = Location.objects.select_related('warehouse', 'owner').get(pk=pk)
+        except Location.DoesNotExist:
+            return _not_found('Location')
+
+        if not is_super_admin(request.user):
+            if not location.is_active or not location.warehouse.is_active:
+                return _not_found('Location')
+        if is_item_manager(request.user) and location.owner_id != request.user.id:
+            return _forbidden('Item managers can only deactivate their own locations.')
+
+        return super().post(request, pk)
 
 
 class CategoryListCreateView(BaseCategoryListCreateView):
