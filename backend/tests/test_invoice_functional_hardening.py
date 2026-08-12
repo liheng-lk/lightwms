@@ -105,6 +105,13 @@ def create_db_invoice(*, creator, name, item=None, status_value=InvoiceStatus.PE
     )
 
 
+def materialize_file(invoice, content=b'invoice bytes'):
+    path = Path(settings.MEDIA_ROOT) / invoice.file
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+    return path
+
+
 @pytest.mark.django_db
 class TestInvoiceAssociationScope:
     def test_manager_can_attach_invoice_to_owned_item(self, manager_a, inventory):
@@ -188,18 +195,57 @@ class TestInvoiceBatchStatusAudit:
 
 
 @pytest.mark.django_db
-class TestInvoiceBatchDeleteLifecycle:
-    def _materialize_file(self, invoice, content=b'invoice bytes'):
-        path = Path(settings.MEDIA_ROOT) / invoice.file
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(content)
-        return path
+class TestInvoiceSingleDeleteLifecycle:
+    def test_scoped_single_delete_writes_delete_audit_and_removes_file_after_commit(
+        self, manager_a, inventory, django_capture_on_commit_callbacks,
+    ):
+        item_a, _ = inventory
+        invoice = create_db_invoice(creator=manager_a, name='single-delete', item=item_a)
+        path = materialize_file(invoice)
+        invoice_id = invoice.id
+        client = APIClient()
+        client.force_authenticate(user=manager_a)
 
+        with django_capture_on_commit_callbacks(execute=True):
+            response = client.delete(f'/api/v1/invoices/{invoice_id}/')
+
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+        assert not Invoice.objects.filter(id=invoice_id).exists()
+        assert not path.exists()
+        assert AuditLog.objects.filter(
+            action=AuditAction.DELETE,
+            target_type=TargetType.INVOICE,
+            target_id=invoice_id,
+            operator=manager_a,
+        ).exists()
+
+    def test_manager_cannot_delete_invoice_outside_scope(self, manager_a, manager_b, inventory):
+        _, item_b = inventory
+        invoice = create_db_invoice(creator=manager_b, name='single-delete-denied', item=item_b)
+        path = materialize_file(invoice)
+        client = APIClient()
+        client.force_authenticate(user=manager_a)
+
+        response = client.delete(f'/api/v1/invoices/{invoice.id}/')
+
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+        assert Invoice.objects.filter(id=invoice.id).exists()
+        assert path.exists()
+        assert not AuditLog.objects.filter(
+            action=AuditAction.DELETE,
+            target_type=TargetType.INVOICE,
+            target_id=invoice.id,
+            operator=manager_a,
+        ).exists()
+
+
+@pytest.mark.django_db
+class TestInvoiceBatchDeleteLifecycle:
     def test_batch_delete_missing_id_does_not_delete_files_or_rows(self, admin):
         first = create_db_invoice(creator=admin, name='delete-first')
         second = create_db_invoice(creator=admin, name='delete-second')
-        first_path = self._materialize_file(first, b'first')
-        second_path = self._materialize_file(second, b'second')
+        first_path = materialize_file(first, b'first')
+        second_path = materialize_file(second, b'second')
         missing = max(first.id, second.id) + 99999
         client = APIClient()
         client.force_authenticate(user=admin)
@@ -214,19 +260,22 @@ class TestInvoiceBatchDeleteLifecycle:
         assert first_path.exists()
         assert second_path.exists()
 
-    def test_batch_delete_removes_files_and_writes_delete_audit(self, admin):
+    def test_batch_delete_removes_files_and_writes_delete_audit(
+        self, admin, django_capture_on_commit_callbacks,
+    ):
         invoices = [
             create_db_invoice(creator=admin, name=f'delete-ok-{i}')
             for i in range(2)
         ]
-        paths = [self._materialize_file(invoice, f'bytes-{i}'.encode()) for i, invoice in enumerate(invoices)]
+        paths = [materialize_file(invoice, f'bytes-{i}'.encode()) for i, invoice in enumerate(invoices)]
         ids = [invoice.id for invoice in invoices]
         client = APIClient()
         client.force_authenticate(user=admin)
 
-        response = client.post('/api/v1/invoices/batch/delete/', {
-            'ids': ids,
-        }, format='json')
+        with django_capture_on_commit_callbacks(execute=True):
+            response = client.post('/api/v1/invoices/batch/delete/', {
+                'ids': ids,
+            }, format='json')
 
         assert response.status_code == status.HTTP_200_OK
         assert response.data['deleted'] == 2
@@ -240,15 +289,18 @@ class TestInvoiceBatchDeleteLifecycle:
                 operator=admin,
             ).exists()
 
-    def test_batch_delete_duplicate_ids_counts_unique_records(self, admin):
+    def test_batch_delete_duplicate_ids_counts_unique_records(
+        self, admin, django_capture_on_commit_callbacks,
+    ):
         invoice = create_db_invoice(creator=admin, name='delete-duplicate-id')
-        path = self._materialize_file(invoice)
+        path = materialize_file(invoice)
         client = APIClient()
         client.force_authenticate(user=admin)
 
-        response = client.post('/api/v1/invoices/batch/delete/', {
-            'ids': [invoice.id, invoice.id],
-        }, format='json')
+        with django_capture_on_commit_callbacks(execute=True):
+            response = client.post('/api/v1/invoices/batch/delete/', {
+                'ids': [invoice.id, invoice.id],
+            }, format='json')
 
         assert response.status_code == status.HTTP_200_OK
         assert response.data['deleted'] == 1
