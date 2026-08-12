@@ -6,6 +6,12 @@ from .base import *
 
 DEBUG = False
 
+# Production must never silently start with development fallback credentials.
+if not os.environ.get('SECRET_KEY'):
+    raise RuntimeError('SECRET_KEY must be set in production.')
+if not os.environ.get('POSTGRES_PASSWORD'):
+    raise RuntimeError('POSTGRES_PASSWORD must be set in production.')
+
 # 允许的主机名（支持通配符和空值处理）
 _allowed_hosts = os.environ.get('ALLOWED_HOSTS', '')
 if _allowed_hosts == '*':
@@ -50,7 +56,7 @@ LOGGING = {
         'file': {
             'class': 'logging.handlers.RotatingFileHandler',
             'filename': '/var/log/lightwms/app.log',
-            'maxBytes': 10485760,  # 10MB
+            'maxBytes': 10485760,
             'backupCount': 5,
             'formatter': 'verbose',
         },
