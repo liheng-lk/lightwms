@@ -11,6 +11,9 @@ from .models import ItemStatus, ItemType
 from .services.search_service import SearchFilters, SearchService
 
 
+MAX_BIGINT_ID = 9_223_372_036_854_775_807
+
+
 class SearchQuerySerializer(serializers.Serializer):
     keyword = serializers.CharField(
         required=False,
@@ -18,9 +21,9 @@ class SearchQuerySerializer(serializers.Serializer):
         trim_whitespace=True,
         max_length=100,
     )
-    category = serializers.IntegerField(required=False, min_value=1)
-    location = serializers.IntegerField(required=False, min_value=1)
-    owner = serializers.IntegerField(required=False, min_value=1)
+    category = serializers.IntegerField(required=False, min_value=1, max_value=MAX_BIGINT_ID)
+    location = serializers.IntegerField(required=False, min_value=1, max_value=MAX_BIGINT_ID)
+    owner = serializers.IntegerField(required=False, min_value=1, max_value=MAX_BIGINT_ID)
     type = serializers.ChoiceField(required=False, choices=ItemType.choices)
     status = serializers.ChoiceField(required=False, choices=ItemStatus.choices)
     include_inactive = serializers.BooleanField(required=False, default=False)
