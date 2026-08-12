@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { ScanLine, Keyboard, ArrowLeft } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -14,162 +14,144 @@ import {
 } from '@/components/scanner';
 import type { ActionResult } from '@/lib/hooks/use-quick-action';
 
-/**
- * Generate unique ID for scan records
- */
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
 }
 
-/**
- * Scan Page
- * 
- * Main page for mobile barcode scanning functionality.
- * Integrates scanner, quick action panel, and scan history components.
- * Implements continuous scanning mode.
- * 
- * Requirements: 5.1, 5.2
- * - Provide "continue scanning" option after operation
- * - Reactivate camera when user chooses to continue
- */
+interface BarcodeItemResponse {
+  name?: string;
+}
+
 export default function ScanPage() {
   const router = useRouter();
-  
-  // Current scanned barcode
   const [currentBarcode, setCurrentBarcode] = useState<string | null>(null);
-  
-  // Scanner enabled state for continuous scanning mode (Requirement 5.1, 5.2)
   const [scannerEnabled, setScannerEnabled] = useState(true);
-  
-  // Input mode: 'camera' or 'manual'
   const [inputMode, setInputMode] = useState<'camera' | 'manual'>('camera');
-  
-  // Scan history for the session (Requirement 5.3)
   const [scanHistory, setScanHistory] = useState<ScanRecord[]>([]);
-  
-  // Track last scanned barcode to prevent duplicate scans
   const lastScannedRef = useRef<string | null>(null);
   const scanTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  /**
-   * Handle barcode scan from camera
-   * Implements debounce to prevent duplicate scans
-   */
+  useEffect(() => {
+    return () => {
+      if (scanTimeoutRef.current) {
+        clearTimeout(scanTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const handleScan = useCallback((barcode: string, format: string) => {
-    // Prevent duplicate scans within 2 seconds
     if (lastScannedRef.current === barcode) {
       return;
     }
-    
+
     lastScannedRef.current = barcode;
-    
-    // Clear previous timeout
+
     if (scanTimeoutRef.current) {
       clearTimeout(scanTimeoutRef.current);
     }
-    
-    // Reset duplicate prevention after 2 seconds
+
     scanTimeoutRef.current = setTimeout(() => {
       lastScannedRef.current = null;
     }, 2000);
-    
-    // Pause scanner while processing
+
     setScannerEnabled(false);
     setCurrentBarcode(barcode);
-    
-    console.log(`Scanned: ${barcode} (${format})`);
+
+    if (process.env.NODE_ENV === 'development') {
+      console.debug(`Scanned: ${barcode} (${format})`);
+    }
   }, []);
 
-  /**
-   * Handle manual barcode input
-   */
   const handleManualInput = useCallback((barcode: string) => {
+    setScannerEnabled(false);
     setCurrentBarcode(barcode);
-    // Switch to camera tab to show the action panel
     setInputMode('camera');
   }, []);
 
-  /**
-   * Handle scanner error
-   */
   const handleScanError = useCallback((error: Error) => {
     console.error('Scanner error:', error);
   }, []);
 
-  /**
-   * Handle action completion
-   * Records the action in history
-   */
-  const handleActionComplete = useCallback((result: ActionResult) => {
-    // Add to scan history (Requirement 5.3)
+  const handleActionComplete = useCallback(async (result: ActionResult) => {
+    const barcode = currentBarcode || '';
+    let itemName = barcode ? `条码 ${barcode}` : '未知物品';
+
+    if (barcode) {
+      try {
+        const response = await fetch(`/api/wms/items/by-barcode/${encodeURIComponent(barcode)}/`, {
+          cache: 'no-store',
+        });
+        if (response.ok) {
+          const item = (await response.json()) as BarcodeItemResponse;
+          if (item.name) itemName = item.name;
+        }
+      } catch {
+        // History should still be recorded even when the display-name lookup fails.
+      }
+    }
+
     const record: ScanRecord = {
       id: generateId(),
-      barcode: currentBarcode || '',
-      itemName: '', // Will be filled by the panel
+      barcode,
+      itemName,
       action: result.action,
       result: result.success ? 'success' : 'failed',
       timestamp: new Date(),
       message: result.message,
     };
-    
-    setScanHistory(prev => [record, ...prev]);
+
+    setScanHistory((prev) => [record, ...prev]);
   }, [currentBarcode]);
 
-  /**
-   * Handle rescan request (Requirement 5.1, 5.2)
-   * Reactivates the camera for continuous scanning
-   */
   const handleRescan = useCallback(() => {
     setCurrentBarcode(null);
     lastScannedRef.current = null;
     setScannerEnabled(true);
   }, []);
 
-  /**
-   * Clear scan history
-   */
   const handleClearHistory = useCallback(() => {
     setScanHistory([]);
   }, []);
 
-  /**
-   * Go back to previous page
-   */
   const handleBack = useCallback(() => {
     router.back();
   }, [router]);
 
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)] max-w-2xl mx-auto">
-      {/* Header */}
       <div className="flex items-center gap-3 mb-4">
-        <Button variant="ghost" size="icon" onClick={handleBack}>
+        <Button variant="ghost" size="icon" onClick={handleBack} aria-label="返回上一页" className="min-h-11 min-w-11">
           <ArrowLeft className="h-5 w-5" />
         </Button>
-        <h1 className="text-xl font-semibold">扫码操作</h1>
+        <div>
+          <h1 className="text-xl font-semibold">扫码操作</h1>
+          <p className="text-xs text-muted-foreground">扫描后相机会暂停，完成操作或点击重新扫描再继续。</p>
+        </div>
       </div>
 
-      {/* Main Content */}
       <div className="flex-1 flex flex-col gap-4 overflow-hidden">
-        {/* Scanner / Manual Input Tabs */}
         <Tabs
           value={inputMode}
-          onValueChange={(v) => setInputMode(v as 'camera' | 'manual')}
+          onValueChange={(v) => {
+            const mode = v as 'camera' | 'manual';
+            setInputMode(mode);
+            if (mode === 'manual') setScannerEnabled(false);
+            if (mode === 'camera' && !currentBarcode) setScannerEnabled(true);
+          }}
           className="flex-shrink-0"
         >
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="camera" className="flex items-center gap-2">
+          <TabsList className="grid w-full grid-cols-2 h-11">
+            <TabsTrigger value="camera" className="flex h-10 items-center gap-2">
               <ScanLine className="h-4 w-4" />
               摄像头扫描
             </TabsTrigger>
-            <TabsTrigger value="manual" className="flex items-center gap-2">
+            <TabsTrigger value="manual" className="flex h-10 items-center gap-2">
               <Keyboard className="h-4 w-4" />
               手动输入
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value="camera" className="mt-4">
-            {/* Barcode Scanner */}
             <BarcodeScanner
               onScan={handleScan}
               onError={handleScanError}
@@ -179,7 +161,6 @@ export default function ScanPage() {
           </TabsContent>
 
           <TabsContent value="manual" className="mt-4">
-            {/* Manual Input */}
             <ManualInput
               onSubmit={handleManualInput}
               autoFocus={inputMode === 'manual'}
@@ -188,7 +169,6 @@ export default function ScanPage() {
           </TabsContent>
         </Tabs>
 
-        {/* Quick Action Panel */}
         <QuickActionPanel
           barcode={currentBarcode}
           onActionComplete={handleActionComplete}
@@ -196,7 +176,6 @@ export default function ScanPage() {
           className="flex-shrink-0"
         />
 
-        {/* Scan History (Requirement 5.3, 5.4) */}
         <div className="flex-1 overflow-hidden">
           <ScanHistory
             history={scanHistory}

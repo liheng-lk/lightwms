@@ -1,10 +1,11 @@
 # LightWMS Production Docker Compose
 # 使用统一镜像部署
+# 在仓库根目录运行：
+# docker-compose -f docker/compose/docker-compose.production.yml up -d
 
 version: '3.8'
 
 services:
-  # PostgreSQL Database
   db:
     image: postgres:15-alpine
     container_name: lightwms-db
@@ -12,7 +13,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-lightwms}
       POSTGRES_USER: ${POSTGRES_USER:-lightwms}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lightwms_secret}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -24,11 +25,7 @@ services:
       start_period: 10s
     networks:
       - lightwms-network
-    # 不暴露端口到外部，仅内部访问
-    # ports:
-    #   - "5432:5432"
 
-  # Redis Cache
   redis:
     image: redis:7-alpine
     container_name: lightwms-redis
@@ -44,38 +41,31 @@ services:
     networks:
       - lightwms-network
 
-  # LightWMS Application (Frontend + Backend + Nginx)
   app:
     build:
-      context: .
-      dockerfile: Dockerfile.unified
+      context: ../..
+      dockerfile: docker/Dockerfile.unified
     image: lightwms:latest
     container_name: lightwms-app
     restart: unless-stopped
     environment:
-      # Django settings
       - DJANGO_SETTINGS_MODULE=config.settings.production
-      - SECRET_KEY=${SECRET_KEY}
+      - SECRET_KEY=${SECRET_KEY:?Set SECRET_KEY in .env}
       - DEBUG=False
-      # Database
       - POSTGRES_DB=${POSTGRES_DB:-lightwms}
       - POSTGRES_USER=${POSTGRES_USER:-lightwms}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-lightwms_secret}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       - POSTGRES_HOST=db
       - POSTGRES_PORT=5432
-      # Redis
       - REDIS_URL=redis://redis:6379/0
-      # Security
       - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1}
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost}
       - SECURE_SSL_REDIRECT=${SECURE_SSL_REDIRECT:-False}
       - CSRF_TRUSTED_ORIGINS=${CSRF_TRUSTED_ORIGINS:-http://localhost}
-      # Next.js
       - BACKEND_URL=http://127.0.0.1:8000
-      # Optional: Create superuser on first run
       - CREATE_SUPERUSER=${CREATE_SUPERUSER:-false}
       - DJANGO_SUPERUSER_USERNAME=${DJANGO_SUPERUSER_USERNAME:-admin}
-      - DJANGO_SUPERUSER_PASSWORD=${DJANGO_SUPERUSER_PASSWORD:-admin123}
+      - DJANGO_SUPERUSER_PASSWORD=${DJANGO_SUPERUSER_PASSWORD:-}
       - DJANGO_SUPERUSER_EMAIL=${DJANGO_SUPERUSER_EMAIL:-admin@example.com}
     volumes:
       - media_data:/app/backend/media
@@ -96,7 +86,6 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # Backup Service (optional, use --profile backup to enable)
   backup:
     image: postgres:15-alpine
     container_name: lightwms-backup
@@ -106,12 +95,12 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-lightwms}
       POSTGRES_USER: ${POSTGRES_USER:-lightwms}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lightwms_secret}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       POSTGRES_HOST: db
-      PGPASSWORD: ${POSTGRES_PASSWORD:-lightwms_secret}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     volumes:
-      - ./scripts:/scripts:ro
-      - ./backup/crontab:/etc/crontabs/root:ro
+      - ../scripts:/scripts:ro
+      - ../backup/crontab:/etc/crontabs/root:ro
       - backup_data:/backups
     entrypoint: ["/bin/sh", "-c", "crond -f -l 2"]
     depends_on:
