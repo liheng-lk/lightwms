@@ -84,15 +84,29 @@ jobs:
           import re
           from pathlib import Path
 
+          matches = []
           for path in sorted(Path('src').rglob('*')):
               if not path.is_file() or path.suffix not in {'.ts', '.tsx'}:
                   continue
-              for line_no, line in enumerate(path.read_text(encoding='utf-8').splitlines(), start=1):
+              lines = path.read_text(encoding='utf-8').splitlines()
+              for index, line in enumerate(lines):
                   if "@/lib/" not in line:
                       continue
-                  text = re.sub(r'\s+', ' ', line.strip())[:1000]
-                  text = text.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
-                  print(f"::notice file={path},line={line_no},title=frontend lib contract::{text}")
+                  start = index
+                  while start > 0 and ('from ' not in lines[start] or "@/lib/" not in lines[start]):
+                      start -= 1
+                      if start < index - 12:
+                          start = index
+                          break
+                  end = index
+                  statement = lines[index].strip()
+                  if statement.startswith('}') and start < index:
+                      statement = ' '.join(part.strip() for part in lines[start:index + 1])
+                  matches.append(f"{path}:{index + 1} {statement}")
+          text = ' || '.join(matches)
+          text = re.sub(r'\s+', ' ', text)[:60000]
+          text = text.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          print(f"::notice title=frontend lib contracts::{text}")
           PY
       - name: Verify frontend source integrity
         run: |
@@ -112,8 +126,8 @@ jobs:
           from pathlib import Path
 
           log = Path('build.log').read_text(encoding='utf-8', errors='replace')
-          tail = '\n'.join(log.splitlines()[-80:])
-          tail = re.sub(r'\s+', ' ', tail)[:7000]
+          tail = '\n'.join(log.splitlines()[-120:])
+          tail = re.sub(r'\s+', ' ', tail)[:12000]
           tail = tail.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
           print(f"::error title=frontend build::{tail}")
           PY
