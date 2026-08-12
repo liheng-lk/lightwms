@@ -2,7 +2,8 @@
 URL configuration for audit app.
 """
 from django.urls import path
-from .permission_views import (
+
+from .query_views import (
     AuditLogListView,
     AuditLogResourceHistoryView,
     AuditLogUserActivityView,
