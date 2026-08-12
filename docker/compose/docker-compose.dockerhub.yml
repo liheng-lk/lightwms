@@ -1,25 +1,15 @@
 # LightWMS DockerHub 镜像部署配置
 # 使用预构建的 DockerHub 镜像进行部署测试
-# 
+#
 # 使用方法:
-#   直接运行: docker-compose -f docker-compose.dockerhub.yml up -d
+#   在仓库根目录运行:
+#   docker-compose -f docker/compose/docker-compose.dockerhub.yml up -d
 #
-# 自定义配置（可选）:
-#   创建 .env 文件覆盖默认值，如数据库密码、SECRET_KEY 等
-#
-# 镜像地址:
-#   - 后端: liheng6668/lightwms-backend:latest
-#   - 前端: liheng6668/lightwms-frontend:latest
-#
-# 访问地址:
-#   - http://localhost      (通过 Nginx 统一入口)
-#   - http://localhost:3000 (直接访问前端)
-#   - http://localhost:8000 (直接访问后端 API)
+# 生产使用前请在根目录 .env 中至少设置 SECRET_KEY 和 POSTGRES_PASSWORD。
 
 version: '3.8'
 
 services:
-  # PostgreSQL 数据库
   db:
     image: postgres:15-alpine
     container_name: lightwms-db
@@ -27,7 +17,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-lightwms}
       POSTGRES_USER: ${POSTGRES_USER:-lightwms}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lightwms_secret}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -40,7 +30,6 @@ services:
     networks:
       - lightwms-network
 
-  # Redis 缓存
   redis:
     image: redis:7-alpine
     container_name: lightwms-redis
@@ -56,18 +45,17 @@ services:
     networks:
       - lightwms-network
 
-  # 后端 API (Django) - 使用 DockerHub 镜像
   backend:
     image: liheng6668/lightwms-backend:latest
     container_name: lightwms-backend
     restart: unless-stopped
     environment:
       - DJANGO_SETTINGS_MODULE=config.settings.production
-      - SECRET_KEY=${SECRET_KEY:-your-secret-key-change-in-production}
+      - SECRET_KEY=${SECRET_KEY:?Set SECRET_KEY in .env}
       - DEBUG=False
       - POSTGRES_DB=${POSTGRES_DB:-lightwms}
       - POSTGRES_USER=${POSTGRES_USER:-lightwms}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-lightwms_secret}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       - POSTGRES_HOST=db
       - POSTGRES_PORT=5432
       - REDIS_URL=redis://redis:6379/0
@@ -93,7 +81,6 @@ services:
       retries: 3
       start_period: 30s
 
-  # 前端 (Next.js) - 使用 DockerHub 镜像
   frontend:
     image: liheng6668/lightwms-frontend:latest
     container_name: lightwms-frontend
@@ -116,7 +103,6 @@ services:
       retries: 3
       start_period: 30s
 
-  # Nginx 反向代理
   nginx:
     image: nginx:alpine
     container_name: lightwms-nginx
@@ -124,7 +110,7 @@ services:
     ports:
       - "${HTTP_PORT:-80}:80"
     volumes:
-      - ./deploy/nginx-split.conf:/etc/nginx/nginx.conf:ro
+      - ../config/nginx-split.conf:/etc/nginx/nginx.conf:ro
       - media_data:/app/media:ro
       - static_data:/app/staticfiles:ro
     depends_on:
