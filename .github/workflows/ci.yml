@@ -82,45 +82,26 @@ jobs:
         run: |
           python - <<'PY'
           import re
+          from collections import defaultdict
           from pathlib import Path
 
-          matches = []
+          contracts = defaultdict(set)
+          pattern = re.compile(r"import\s+(.*?)\s+from\s+['\"](@/lib/[^'\"]+)['\"]", re.S)
           for path in sorted(Path('src').rglob('*')):
               if not path.is_file() or path.suffix not in {'.ts', '.tsx'}:
                   continue
-              lines = path.read_text(encoding='utf-8').splitlines()
-              i = 0
-              while i < len(lines):
-                  stripped = lines[i].strip()
-                  if not stripped.startswith('import '):
-                      i += 1
+              text = path.read_text(encoding='utf-8')
+              for imported, module in pattern.findall(text):
+                  if module == '@/lib/utils':
                       continue
-                  start_line = i + 1
-                  parts = [stripped]
-                  while ';' not in parts[-1] and i + 1 < len(lines):
-                      i += 1
-                      parts.append(lines[i].strip())
-                  statement = ' '.join(parts)
-                  if "@/lib/" in statement:
-                      matches.append(f"{path}:{start_line} {statement}")
-                  i += 1
-
-          chunks = []
-          current = ''
-          for entry in matches:
-              candidate = entry if not current else current + ' || ' + entry
-              if len(candidate) > 7000 and current:
-                  chunks.append(current)
-                  current = entry
-              else:
-                  current = candidate
-          if current:
-              chunks.append(current)
-
-          for index, text in enumerate(chunks[:9], start=1):
-              text = re.sub(r'\s+', ' ', text)
-              text = text.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
-              print(f"::notice title=frontend lib contracts {index}/{len(chunks)}::{text}")
+                  imported = re.sub(r'\s+', ' ', imported.strip())
+                  contracts[module].add(imported)
+          summary = ' || '.join(
+              f"{module} <= {' ; '.join(sorted(values))}"
+              for module, values in sorted(contracts.items())
+          )
+          summary = summary.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          print(f"::notice title=frontend lib contracts::{summary}")
           PY
       - name: Verify frontend source integrity
         run: |
