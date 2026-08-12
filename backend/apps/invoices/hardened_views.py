@@ -1,11 +1,19 @@
 """Functional hardening wrappers for invoice management."""
+import io
+import os
+import zipfile
+from pathlib import Path
+
+from django.conf import settings
 from django.db import transaction
+from django.http import HttpResponse
 from rest_framework import status
 from rest_framework.response import Response
 
 from apps.audit.models import AuditAction, AuditLog, TargetType
 from apps.inventory.models import Item
 from apps.users.models import UserRole
+from core.exceptions import BusinessConflictError
 from core.permissions import IsItemManagerOrSuperAdmin, IsSuperAdmin
 
 from .models import Invoice, InvoiceStatus
@@ -15,6 +23,7 @@ from .permission_views import (
     InvoiceDetailView as BaseInvoiceDetailView,
     InvoiceBatchStatusUpdateView as BaseInvoiceBatchStatusUpdateView,
     InvoiceBatchDeleteView as BaseInvoiceBatchDeleteView,
+    InvoiceExportView as BaseInvoiceExportView,
 )
 
 
@@ -68,6 +77,60 @@ def _write_delete_audit(request, invoice: Invoice):
 def _schedule_file_delete(file_path: str):
     if file_path:
         transaction.on_commit(lambda: InvoiceService._delete_file(file_path))
+
+
+def _safe_archive_component(value, fallback='unknown', max_length=60):
+    """Return one ZIP path component; never allow separators or dot traversal."""
+    value = str(value or '').strip()
+    cleaned = ''.join(
+        char if (char.isalnum() or char in (' ', '-', '_', '.', '@')) else '_'
+        for char in value
+    ).strip(' .')
+    if cleaned in ('', '.', '..'):
+        cleaned = fallback
+    return cleaned[:max_length]
+
+
+def _resolve_invoice_file(file_path: str) -> Path:
+    """Resolve an invoice file and guarantee it remains below MEDIA_ROOT."""
+    media_root = Path(settings.MEDIA_ROOT).resolve()
+    candidate = (media_root / str(file_path or '')).resolve()
+    if not candidate.is_relative_to(media_root):
+        raise BusinessConflictError(
+            code='INVALID_FILE_PATH',
+            message='Invoice file path is outside the media directory.',
+            details={'file': str(file_path or '')},
+        )
+    return candidate
+
+
+def _export_files_to_safe_zip(invoices) -> bytes:
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
+        for invoice in invoices:
+            if not invoice.file:
+                continue
+            file_path = _resolve_invoice_file(invoice.file)
+            if not file_path.exists() or not file_path.is_file():
+                continue
+
+            ext = os.path.splitext(invoice.file)[1].lower()
+            date_str = invoice.created_at.strftime('%Y%m%d')
+            category = _safe_archive_component(invoice.category, fallback='未分类')
+            item_name = _safe_archive_component(
+                invoice.item.name if invoice.item else invoice.name,
+                fallback='invoice',
+            )
+            uploader = _safe_archive_component(
+                invoice.created_by.username if invoice.created_by else 'unknown',
+                fallback='unknown',
+            )
+            # Invoice id prevents two same-day invoices from producing duplicate ZIP names.
+            archive_name = f'{category}/{date_str}_{invoice.id}_{item_name}_{uploader}{ext}'
+            archive.write(file_path, archive_name)
+
+    output.seek(0)
+    return output.read()
 
 
 class InvoiceListCreateView(BaseInvoiceListCreateView):
@@ -205,3 +268,62 @@ class InvoiceBatchDeleteView(BaseInvoiceBatchDeleteView):
             _schedule_file_delete(file_path)
 
         return Response({'deleted': deleted}, status=status.HTTP_200_OK)
+
+
+class InvoiceExportView(BaseInvoiceExportView):
+    """Super-admin ZIP export with path confinement and strict selected-ID semantics."""
+    permission_classes = [IsSuperAdmin]
+
+    def get(self, request):
+        invoices = InvoiceService.list(
+            category=request.query_params.get('category'),
+            status=request.query_params.get('status'),
+            registered_month=request.query_params.get('month'),
+        )
+        try:
+            content = _export_files_to_safe_zip(invoices)
+        except BusinessConflictError as exc:
+            return Response(
+                {'code': exc.code, 'message': exc.message, 'details': exc.details},
+                status=status.HTTP_409_CONFLICT,
+            )
+        filename = f"invoices_{request.query_params.get('month') or 'all'}.zip"
+        response = HttpResponse(content, content_type='application/zip')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+
+    def post(self, request):
+        ids = _normalise_ids(request.data.get('ids'))
+        if ids is None:
+            return Response(
+                {'code': 'INVALID_REQUEST', 'message': 'ids must be a non-empty list', 'details': None},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        invoices = list(
+            Invoice.objects.select_related('item', 'created_by')
+            .filter(id__in=ids)
+            .order_by('id')
+        )
+        if len(invoices) != len(ids):
+            found = {invoice.id for invoice in invoices}
+            missing = [invoice_id for invoice_id in ids if invoice_id not in found]
+            return Response(
+                {
+                    'code': 'NOT_FOUND',
+                    'message': 'One or more invoices were not found.',
+                    'details': {'ids': missing},
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        try:
+            content = _export_files_to_safe_zip(invoices)
+        except BusinessConflictError as exc:
+            return Response(
+                {'code': exc.code, 'message': exc.message, 'details': exc.details},
+                status=status.HTTP_409_CONFLICT,
+            )
+        response = HttpResponse(content, content_type='application/zip')
+        response['Content-Disposition'] = f'attachment; filename="invoices_selected_{len(ids)}.zip"'
+        return response
