@@ -25,6 +25,7 @@ import { WarehouseTable } from '@/components/warehouses/warehouse-table';
 import { WarehouseForm } from '@/components/warehouses/warehouse-form';
 import { PageHelp } from '@/components/ui/help-tooltip';
 import { useWarehouses, useDeleteWarehouses } from '@/lib/hooks/use-warehouses';
+import { useAuth } from '@/providers/auth-provider';
 import type { Warehouse } from '@/lib/types';
 
 const PAGE_SIZES = [10, 20, 50];
@@ -32,6 +33,9 @@ const PAGE_SIZES = [10, 20, 50];
 export default function WarehousesPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { user } = useAuth();
+  const canManage = user?.role === 'super_admin' || user?.role === 'item_manager';
+  const isSuperAdmin = user?.role === 'super_admin';
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingWarehouse, setEditingWarehouse] = useState<Warehouse | undefined>(undefined);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -40,59 +44,35 @@ export default function WarehousesPage() {
   const page = Number(searchParams.get('page')) || 1;
   const page_size = Number(searchParams.get('page_size')) || 20;
   
-  const { data, isLoading, refetch } = useWarehouses({
-    page,
-    page_size,
-  });
-
+  const { data, isLoading, refetch } = useWarehouses({ page, page_size });
   const deleteWarehousesMutation = useDeleteWarehouses();
-  
   const totalPages = data ? Math.ceil(data.count / page_size) : 0;
   
   const updateParams = (updates: Record<string, string | number | undefined>) => {
     const params = new URLSearchParams(searchParams.toString());
     Object.entries(updates).forEach(([key, value]) => {
-      if (value !== undefined && value !== '') {
-        params.set(key, String(value));
-      } else {
-        params.delete(key);
-      }
+      if (value !== undefined && value !== '') params.set(key, String(value));
+      else params.delete(key);
     });
     router.push(`/warehouses?${params.toString()}`);
   };
   
-  const goToPage = (newPage: number) => {
-    updateParams({ page: newPage });
-  };
-  
-  const changePageSize = (newSize: string) => {
-    updateParams({ page_size: Number(newSize), page: 1 });
-  };
-
-  const handleCreateSuccess = () => {
-    refetch();
-  };
-
+  const goToPage = (newPage: number) => updateParams({ page: newPage });
+  const changePageSize = (newSize: string) => updateParams({ page_size: Number(newSize), page: 1 });
+  const handleCreateSuccess = () => refetch();
   const handleEditWarehouse = (warehouse: Warehouse) => {
-    setEditingWarehouse(warehouse);
+    if (canManage) setEditingWarehouse(warehouse);
   };
-
   const handleEditDialogClose = (open: boolean) => {
-    if (!open) {
-      setEditingWarehouse(undefined);
-    }
+    if (!open) setEditingWarehouse(undefined);
   };
-
   const handleEditSuccess = () => {
     setEditingWarehouse(undefined);
     refetch();
   };
-
-  const handleDeactivateSuccess = () => {
-    refetch();
-  };
-
+  const handleDeactivateSuccess = () => refetch();
   const handleBatchDelete = () => {
+    if (!isSuperAdmin) return;
     deleteWarehousesMutation.mutate(selectedIds, {
       onSuccess: () => {
         setSelectedIds([]);
@@ -101,14 +81,10 @@ export default function WarehousesPage() {
       },
     });
   };
-
-  const handleClearSelection = () => {
-    setSelectedIds([]);
-  };
+  const handleClearSelection = () => setSelectedIds([]);
   
   return (
     <div className="space-y-4">
-      {/* 页面标题 - Requirements 17.1 */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <h1 className="text-2xl font-semibold">仓库管理</h1>
@@ -117,14 +93,14 @@ export default function WarehousesPage() {
             tips={[
               '仓库是物品存放的顶层容器',
               '每个仓库可以包含多个库位',
-              '点击「新增仓库」创建新的仓库',
-              '停用仓库前需确保其下没有物品',
-              '仅超级管理员可管理仓库',
+              '物品管理员和超级管理员可创建、编辑和停用有效仓库',
+              '停用仓库后，其下库位会从普通查询中隐藏并停止用于新库存',
+              '批量永久删除属于全局破坏性操作，仅超级管理员可执行',
             ]}
           />
         </div>
         <div className="flex items-center gap-2">
-          {selectedIds.length > 0 && (
+          {isSuperAdmin && selectedIds.length > 0 && (
             <Button 
               variant="outline"
               className="text-destructive"
@@ -134,15 +110,16 @@ export default function WarehousesPage() {
               删除 ({selectedIds.length})
             </Button>
           )}
-          <Button onClick={() => setShowCreateDialog(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            新增仓库
-          </Button>
+          {canManage && (
+            <Button onClick={() => setShowCreateDialog(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              新增仓库
+            </Button>
+          )}
         </div>
       </div>
 
-      {/* 批量操作栏 */}
-      {selectedIds.length > 0 && (
+      {isSuperAdmin && selectedIds.length > 0 && (
         <div className="flex items-center gap-4 p-3 bg-muted rounded-lg">
           <span className="text-sm">
             已选择 <strong>{selectedIds.length}</strong> 个仓库
@@ -154,59 +131,40 @@ export default function WarehousesPage() {
         </div>
       )}
       
-      {/* 仓库表格 */}
       <WarehouseTable 
         warehouses={data?.results || []} 
         isLoading={isLoading} 
-        onEdit={handleEditWarehouse}
-        onDeactivateSuccess={handleDeactivateSuccess}
-        selectable={true}
+        onEdit={canManage ? handleEditWarehouse : undefined}
+        onDeactivateSuccess={canManage ? handleDeactivateSuccess : undefined}
+        selectable={isSuperAdmin}
         selectedIds={selectedIds}
-        onSelectionChange={setSelectedIds}
+        onSelectionChange={isSuperAdmin ? setSelectedIds : undefined}
+        canManage={canManage}
       />
       
-      {/* 分页 */}
       {data && data.count > 0 && (
         <div className="flex items-center justify-between">
           <div className="text-sm text-muted-foreground">
             共 {data.count} 条，第 {page} / {totalPages} 页
           </div>
-          
           <div className="flex items-center gap-4">
-            {/* 每页条数 */}
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">每页</span>
               <Select value={String(page_size)} onValueChange={changePageSize}>
-                <SelectTrigger className="w-[70px]">
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger className="w-[70px]"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {PAGE_SIZES.map((size) => (
-                    <SelectItem key={size} value={String(size)}>
-                      {size}
-                    </SelectItem>
+                    <SelectItem key={size} value={String(size)}>{size}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               <span className="text-sm text-muted-foreground">条</span>
             </div>
-            
-            {/* 翻页按钮 */}
             <div className="flex items-center gap-1">
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => goToPage(page - 1)}
-                disabled={page <= 1}
-              >
+              <Button variant="outline" size="icon" onClick={() => goToPage(page - 1)} disabled={page <= 1}>
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => goToPage(page + 1)}
-                disabled={page >= totalPages}
-              >
+              <Button variant="outline" size="icon" onClick={() => goToPage(page + 1)} disabled={page >= totalPages}>
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
@@ -214,42 +172,44 @@ export default function WarehousesPage() {
         </div>
       )}
 
-      {/* 新增仓库弹窗 - Requirements 17.2, 17.3 */}
-      <WarehouseForm
-        open={showCreateDialog}
-        onOpenChange={setShowCreateDialog}
-        onSuccess={handleCreateSuccess}
-      />
+      {canManage && (
+        <>
+          <WarehouseForm
+            open={showCreateDialog}
+            onOpenChange={setShowCreateDialog}
+            onSuccess={handleCreateSuccess}
+          />
+          <WarehouseForm
+            warehouse={editingWarehouse}
+            open={!!editingWarehouse}
+            onOpenChange={handleEditDialogClose}
+            onSuccess={handleEditSuccess}
+          />
+        </>
+      )}
 
-      {/* 编辑仓库弹窗 - Requirements 17.4 */}
-      <WarehouseForm
-        warehouse={editingWarehouse}
-        open={!!editingWarehouse}
-        onOpenChange={handleEditDialogClose}
-        onSuccess={handleEditSuccess}
-      />
-
-      {/* 批量删除确认弹窗 */}
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>确认批量删除</AlertDialogTitle>
-            <AlertDialogDescription>
-              确定要删除选中的 {selectedIds.length} 个仓库吗？此操作无法撤销。
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleBatchDelete}
-              disabled={deleteWarehousesMutation.isPending}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {deleteWarehousesMutation.isPending ? '删除中...' : '确认删除'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {isSuperAdmin && (
+        <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>确认批量删除</AlertDialogTitle>
+              <AlertDialogDescription>
+                确定要删除选中的 {selectedIds.length} 个仓库吗？此操作无法撤销。
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>取消</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleBatchDelete}
+                disabled={deleteWarehousesMutation.isPending}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {deleteWarehousesMutation.isPending ? '删除中...' : '确认删除'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </div>
   );
 }
