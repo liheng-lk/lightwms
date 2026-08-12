@@ -16,7 +16,8 @@ from core.exceptions import BusinessConflictError
 from core.permissions import IsItemManagerOrSuperAdmin, IsSuperAdmin
 from core.role_utils import is_super_admin, is_item_manager, can_manage_item
 
-from .models import Item
+from .models import Item, ItemStatus, ItemType
+from .serializers import ItemSerializer
 from .services import ItemService
 from .views import (
     ItemListCreateView as BaseItemListCreateView,
@@ -184,6 +185,51 @@ class ItemDetailView(_OwnedItemMixin, BaseItemDetailView):
             return [IsItemManagerOrSuperAdmin()]
         return [IsAuthenticated()]
 
+    def patch(self, request, pk):
+        item = self.get_object(pk, request.user)
+        if item is None:
+            return Response(
+                {'code': 'NOT_FOUND', 'message': 'Item not found.', 'details': None},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Consumable stock is an operational ledger value. Allowing PATCH to
+        # silently ignore quantity produces a false-success response and lets
+        # callers believe stock changed when it did not. Stock must move via
+        # take/replenish operations instead.
+        if item.type == ItemType.CONSUMABLE and 'quantity' in request.data:
+            return Response(
+                {
+                    'code': 'QUANTITY_MANAGED_BY_OPERATIONS',
+                    'message': 'Consumable quantity must be changed through take or replenish operations.',
+                    'details': None,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        response = super().patch(request, pk)
+
+        # Reducing reusable total quantity can make an item fully borrowed.
+        # Keep the persisted status consistent with available_quantity so list
+        # filters and dashboard counts do not report an unavailable item as
+        # "available".
+        if response.status_code == status.HTTP_200_OK and 'quantity' in request.data:
+            refreshed = Item.objects.select_related(
+                'category', 'location', 'location__warehouse', 'owner'
+            ).prefetch_related('images').get(pk=pk)
+            if refreshed.type == ItemType.REUSABLE:
+                desired_status = (
+                    ItemStatus.BORROWED
+                    if refreshed.available_quantity == 0
+                    else ItemStatus.AVAILABLE
+                )
+                if refreshed.status != desired_status:
+                    refreshed.status = desired_status
+                    refreshed.save(update_fields=['status', 'updated_at'])
+                response.data = ItemSerializer(refreshed).data
+
+        return response
+
 
 class ItemDeactivateView(BaseItemDeactivateView):
     permission_classes = [IsItemManagerOrSuperAdmin]
@@ -200,6 +246,15 @@ class ItemDeactivateView(BaseItemDeactivateView):
             return Response(
                 {'code': 'PERMISSION_DENIED', 'message': 'Permission denied.', 'details': None},
                 status=status.HTTP_403_FORBIDDEN,
+            )
+        if item.type == ItemType.REUSABLE and item.borrowed_quantity > 0:
+            return Response(
+                {
+                    'code': 'ITEM_HAS_ACTIVE_BORROWS',
+                    'message': 'Return all borrowed quantity before deactivating this item.',
+                    'details': {'borrowed_quantity': item.borrowed_quantity},
+                },
+                status=status.HTTP_409_CONFLICT,
             )
         return super().post(request, pk)
 
