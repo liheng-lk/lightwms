@@ -55,8 +55,6 @@ class AuthService:
         rate_key = self._get_rate_limit_key(ip, username)
         block_key = self._get_block_key(ip, username)
         try:
-            # add + incr avoids the lost-update race from get()/set() while
-            # remaining compatible with Redis and Django's local cache tests.
             if cache.add(rate_key, 1, self.rate_limit_window):
                 new_count = 1
             else:
@@ -68,8 +66,6 @@ class AuthService:
             if new_count >= self.rate_limit_threshold:
                 cache.set(block_key, True, self.rate_limit_block_ttl)
         except Exception:
-            # Authentication must not become unavailable solely because the
-            # optional rate-limit cache is down.
             pass
 
     def _clear_failed_attempts(self, ip: str, username: str) -> None:
@@ -189,6 +185,9 @@ class AuthService:
         if not user_id:
             raise InvalidToken('Token is missing user_id claim.')
 
+        invalid_message = None
+        token_pair = None
+
         with transaction.atomic():
             outstanding = self._locked_outstanding(old_token)
             if outstanding.user_id != int(user_id):
@@ -203,33 +202,41 @@ class AuthService:
 
             if not user.is_active:
                 self._blacklist_locked(outstanding)
-                raise InvalidToken('User account is disabled.')
-
-            iat = old_token.get('iat')
-            if iat is None:
-                self._blacklist_locked(outstanding)
-                raise InvalidToken('Token is missing required iat claim.')
-            try:
-                token_issued_at = datetime.fromtimestamp(iat, tz=timezone.utc)
-            except (ValueError, TypeError, OSError) as exc:
-                self._blacklist_locked(outstanding)
-                raise InvalidToken('Token has invalid iat claim.') from exc
-
-            if user.tokens_invalid_before:
-                adjusted_invalid_before = user.tokens_invalid_before.replace(microsecond=0)
-                time_diff = (adjusted_invalid_before - token_issued_at).total_seconds()
-                if time_diff > 2:
+                invalid_message = 'User account is disabled.'
+            else:
+                iat = old_token.get('iat')
+                if iat is None:
                     self._blacklist_locked(outstanding)
-                    raise InvalidToken('Token has been invalidated.')
+                    invalid_message = 'Token is missing required iat claim.'
+                else:
+                    try:
+                        token_issued_at = datetime.fromtimestamp(iat, tz=timezone.utc)
+                    except (ValueError, TypeError, OSError):
+                        self._blacklist_locked(outstanding)
+                        invalid_message = 'Token has invalid iat claim.'
+                    else:
+                        if user.tokens_invalid_before:
+                            adjusted_invalid_before = user.tokens_invalid_before.replace(microsecond=0)
+                            time_diff = (adjusted_invalid_before - token_issued_at).total_seconds()
+                            if time_diff > 2:
+                                self._blacklist_locked(outstanding)
+                                invalid_message = 'Token has been invalidated.'
 
-            self._blacklist_locked(outstanding)
-            new_refresh = RefreshToken.for_user(user)
-            new_refresh['username'] = user.username
-            new_refresh['role'] = user.role
-            return TokenPair(
-                access=str(new_refresh.access_token),
-                refresh=str(new_refresh)
-            )
+                if invalid_message is None:
+                    self._blacklist_locked(outstanding)
+                    new_refresh = RefreshToken.for_user(user)
+                    new_refresh['username'] = user.username
+                    new_refresh['role'] = user.role
+                    token_pair = TokenPair(
+                        access=str(new_refresh.access_token),
+                        refresh=str(new_refresh)
+                    )
+
+        # Raise only after the transaction commits so an invalid/disabled
+        # refresh stays blacklisted even if the account is later re-enabled.
+        if invalid_message is not None:
+            raise InvalidToken(invalid_message)
+        return token_pair
 
     def blacklist_all_user_tokens(self, user: 'User') -> int:
         count = 0
