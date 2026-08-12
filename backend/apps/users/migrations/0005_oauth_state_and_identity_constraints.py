@@ -34,7 +34,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name='invitecode',
             constraint=models.CheckConstraint(
-                condition=Q(current_uses__lte=F('max_uses')),
+                check=Q(current_uses__lte=F('max_uses')),
                 name='ck_invite_current_uses_lte_max_uses',
             ),
         ),
