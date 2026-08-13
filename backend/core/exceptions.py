@@ -44,9 +44,12 @@ class RateLimitedError(APIException):
         super().__init__(detail=self.message)
 
 
-# Constraint name to error code mapping
+# Constraint name to error code mapping. Keep both the explicit migration
+# constraint and Django's field-level unique constraint name because existing
+# installations may contain either form.
 CONSTRAINT_ERROR_MAP = {
     'uq_item_sku': DUPLICATE_SKU,
+    'inventory_item_sku_key': DUPLICATE_SKU,
     'uq_item_barcode_not_null': DUPLICATE_BARCODE,
     'uq_borrow_active_item': ITEM_ALREADY_BORROWED,
 }

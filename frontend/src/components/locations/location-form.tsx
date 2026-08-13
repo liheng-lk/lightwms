@@ -32,7 +32,6 @@ import { useCreateLocation, useUpdateLocation, useLocationTreeByWarehouse } from
 import { useUsers } from '@/lib/hooks/use-users';
 import type { Location, Warehouse } from '@/lib/types';
 
-// Form validation schema
 const locationFormSchema = z.object({
   code: z.string().min(1, '请输入库位编码'),
   name: z.string().min(1, '请输入库位名称'),
@@ -53,7 +52,6 @@ interface LocationFormProps {
   onSuccess?: () => void;
 }
 
-// Helper function to flatten tree for parent selection
 function flattenLocations(locations: Location[], level = 0): Array<Location & { level: number }> {
   const result: Array<Location & { level: number }> = [];
   for (const loc of locations) {
@@ -65,25 +63,23 @@ function flattenLocations(locations: Location[], level = 0): Array<Location & { 
   return result;
 }
 
-export function LocationForm({ 
-  location, 
-  warehouses, 
+export function LocationForm({
+  location,
+  warehouses,
   selectedWarehouseId,
   selectedParentId,
-  open, 
-  onOpenChange, 
-  onSuccess 
+  open,
+  onOpenChange,
+  onSuccess,
 }: LocationFormProps) {
   const isEditing = !!location;
   const { mutate: createLocation, isPending: isCreating } = useCreateLocation();
   const { mutate: updateLocation, isPending: isUpdating } = useUpdateLocation();
   const { data: usersData } = useUsers({ page: 1, page_size: 100 });
-  
   const isPending = isCreating || isUpdating;
 
-  // Filter active users for owner selection
   const activeUsers = useMemo(() => {
-    return usersData?.results?.filter(u => u.is_active) || [];
+    return usersData?.results?.filter((user) => user.is_active) || [];
   }, [usersData]);
 
   const form = useForm<LocationFormData>({
@@ -98,22 +94,17 @@ export function LocationForm({
   });
 
   const watchedWarehouse = form.watch('warehouse');
-  
-  // Fetch locations for the selected warehouse to populate parent dropdown
   const { data: warehouseLocations } = useLocationTreeByWarehouse(watchedWarehouse || null);
-  
-  // Flatten locations for parent selection, excluding current location and its children
+
   const availableParents = useMemo(() => {
     if (!warehouseLocations) return [];
     const flattened = flattenLocations(warehouseLocations);
     if (isEditing && location) {
-      // Exclude current location and its descendants
       const excludeIds = new Set<number>();
       const collectIds = (loc: Location) => {
         excludeIds.add(loc.id);
         loc.children?.forEach(collectIds);
       };
-      // Find current location in tree and collect its descendants
       const findAndCollect = (locs: Location[]) => {
         for (const loc of locs) {
           if (loc.id === location.id) {
@@ -124,43 +115,38 @@ export function LocationForm({
         }
       };
       findAndCollect(warehouseLocations);
-      return flattened.filter(loc => !excludeIds.has(loc.id));
+      return flattened.filter((loc) => !excludeIds.has(loc.id));
     }
     return flattened;
   }, [warehouseLocations, isEditing, location]);
 
-  // Reset form when dialog opens/closes or location changes
   useEffect(() => {
-    if (open) {
-      if (location) {
-        // Tree nodes use warehouse_id, full location objects use warehouse
-        const warehouseId = (location as unknown as { warehouse_id?: number }).warehouse_id || location.warehouse;
-        // Tree nodes use owner_id, full location objects use owner
-        const ownerId = (location as unknown as { owner_id?: number }).owner_id || location.owner;
-        // Tree nodes use parent_id, full location objects use parent
-        const parentId = (location as unknown as { parent_id?: number }).parent_id ?? location.parent;
-        form.reset({
-          code: location.code,
-          name: location.name,
-          warehouse: warehouseId,
-          owner: ownerId,
-          parent: parentId || null,
-        });
-      } else {
-        form.reset({
-          code: '',
-          name: '',
-          warehouse: selectedWarehouseId || undefined,
-          owner: undefined,
-          parent: selectedParentId || null,
-        });
-      }
+    if (!open) return;
+
+    if (location) {
+      const warehouseId = (location as unknown as { warehouse_id?: number }).warehouse_id ?? location.warehouse;
+      const ownerId = (location as unknown as { owner_id?: number }).owner_id ?? location.owner;
+      const parentId = (location as unknown as { parent_id?: number }).parent_id ?? location.parent;
+      form.reset({
+        code: location.code,
+        name: location.name,
+        warehouse: warehouseId,
+        owner: ownerId ?? undefined,
+        parent: parentId ?? null,
+      });
+    } else {
+      form.reset({
+        code: '',
+        name: '',
+        warehouse: selectedWarehouseId || undefined,
+        owner: undefined,
+        parent: selectedParentId || null,
+      });
     }
   }, [open, location, selectedWarehouseId, selectedParentId, form]);
 
   const onSubmit = (data: LocationFormData) => {
     if (isEditing && location) {
-      // Update existing location - allow editing code, name, owner
       updateLocation(
         { id: location.id, data: { code: data.code, name: data.name, owner: data.owner } },
         {
@@ -171,25 +157,25 @@ export function LocationForm({
           },
         }
       );
-    } else {
-      // Create new location - Requirements 16.3, 16.4
-      createLocation(
-        {
-          code: data.code,
-          name: data.name,
-          warehouse: data.warehouse,
-          owner: data.owner,
-          parent: data.parent || undefined,
-        },
-        {
-          onSuccess: () => {
-            form.reset();
-            onOpenChange(false);
-            onSuccess?.();
-          },
-        }
-      );
+      return;
     }
+
+    createLocation(
+      {
+        code: data.code,
+        name: data.name,
+        warehouse: data.warehouse,
+        owner: data.owner,
+        parent: data.parent || undefined,
+      },
+      {
+        onSuccess: () => {
+          form.reset();
+          onOpenChange(false);
+          onSuccess?.();
+        },
+      }
+    );
   };
 
   return (
@@ -201,14 +187,13 @@ export function LocationForm({
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            {/* 仓库显示（编辑模式只读） */}
             {isEditing ? (
               <FormItem>
                 <FormLabel>仓库</FormLabel>
-                <Input 
+                <Input
                   value={(() => {
-                    const warehouseId = (location as unknown as { warehouse_id?: number })?.warehouse_id || location?.warehouse;
-                    const warehouse = warehouses.find(w => w.id === warehouseId);
+                    const warehouseId = (location as unknown as { warehouse_id?: number })?.warehouse_id ?? location?.warehouse;
+                    const warehouse = warehouses.find((item) => item.id === warehouseId);
                     return warehouse?.name || `仓库 #${warehouseId}`;
                   })()}
                   disabled
@@ -226,7 +211,6 @@ export function LocationForm({
                       value={field.value?.toString()}
                       onValueChange={(value) => {
                         field.onChange(Number(value));
-                        // Reset parent when warehouse changes
                         form.setValue('parent', null);
                       }}
                     >
@@ -236,7 +220,7 @@ export function LocationForm({
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {warehouses.filter(w => w.is_active).map((warehouse) => (
+                        {warehouses.filter((warehouse) => warehouse.is_active).map((warehouse) => (
                           <SelectItem key={warehouse.id} value={warehouse.id.toString()}>
                             {warehouse.name} ({warehouse.code})
                           </SelectItem>
@@ -249,15 +233,14 @@ export function LocationForm({
               />
             )}
 
-            {/* 父级库位显示（编辑模式只读） */}
             {isEditing ? (
               <FormItem>
                 <FormLabel>父级库位</FormLabel>
-                <Input 
+                <Input
                   value={(() => {
                     const parentId = (location as unknown as { parent_id?: number })?.parent_id ?? location?.parent;
                     if (!parentId) return '无（顶级库位）';
-                    const parent = availableParents.find(p => p.id === parentId);
+                    const parent = availableParents.find((item) => item.id === parentId);
                     return parent?.name || `库位 #${parentId}`;
                   })()}
                   disabled
@@ -296,7 +279,6 @@ export function LocationForm({
               />
             )}
 
-            {/* 负责人选择 */}
             <FormField
               control={form.control}
               name="owner"
@@ -325,7 +307,6 @@ export function LocationForm({
               )}
             />
 
-            {/* 编码 */}
             <FormField
               control={form.control}
               name="code"
@@ -333,17 +314,13 @@ export function LocationForm({
                 <FormItem>
                   <FormLabel>编码 *</FormLabel>
                   <FormControl>
-                    <Input 
-                      placeholder="例如：A-01-01" 
-                      {...field} 
-                    />
+                    <Input placeholder="例如：A-01-01" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
 
-            {/* 名称 */}
             <FormField
               control={form.control}
               name="name"
@@ -359,11 +336,7 @@ export function LocationForm({
             />
 
             <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-              >
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 取消
               </Button>
               <Button type="submit" disabled={isPending}>

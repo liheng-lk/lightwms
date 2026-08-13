@@ -1,0 +1,136 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: lightwms_test
+          POSTGRES_USER: lightwms
+          POSTGRES_PASSWORD: lightwms_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lightwms -d lightwms_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DATABASE_URL: postgres://lightwms:lightwms_test_password@127.0.0.1:5432/lightwms_test
+      DJANGO_SETTINGS_MODULE: config.settings.test
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend dependencies
+        run: pip install -r requirements.txt
+      - name: Django system check
+        run: python manage.py check
+      - name: Verify migration files are current
+        run: python manage.py makemigrations --check --dry-run
+      - name: Apply migrations on a clean PostgreSQL database
+        run: python manage.py migrate --noinput
+      - name: Run backend tests
+        shell: bash
+        run: |
+          set +e
+          pytest --junitxml=pytest-results.xml
+          status=$?
+          python - <<'PY'
+          import re
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          report = Path('pytest-results.xml')
+          if report.exists():
+              root = ET.parse(report).getroot()
+              for case in root.iter('testcase'):
+                  problem = case.find('failure')
+                  if problem is None:
+                      problem = case.find('error')
+                  if problem is None:
+                      continue
+                  name = f"{case.get('classname', '')}.{case.get('name', '')}".strip('.')
+                  message = problem.get('message') or (problem.text or '').strip()
+                  message = re.sub(r'\s+', ' ', message)[:4000]
+                  message = message.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+                  print(f"::error title=pytest {name}::{message}")
+          PY
+          exit "$status"
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Report frontend lib contracts
+        run: |
+          python - <<'PY'
+          import re
+          from collections import defaultdict
+          from pathlib import Path
+
+          contracts = defaultdict(set)
+          pattern = re.compile(r"import\s+([^;]+?)\s+from\s+['\"](@/lib/[^'\"]+)['\"]\s*;", re.S)
+          for path in sorted(Path('src').rglob('*')):
+              if not path.is_file() or path.suffix not in {'.ts', '.tsx'}:
+                  continue
+              text = path.read_text(encoding='utf-8')
+              for imported, module in pattern.findall(text):
+                  if module == '@/lib/utils':
+                      continue
+                  imported = re.sub(r'\s+', ' ', imported.strip())
+                  contracts[module].add(imported)
+          summary = ' || '.join(
+              f"{module} <= {' ; '.join(sorted(values))}"
+              for module, values in sorted(contracts.items())
+          )
+          summary = summary.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          print(f"::notice title=frontend lib contracts::{summary}")
+          PY
+      - name: Verify frontend source integrity
+        run: |
+          test -d src/lib || (echo "ERROR: frontend/src/lib is missing from Git. Check root .gitignore and restore the source directory." && exit 1)
+          test -f src/lib/utils.ts || (echo "ERROR: frontend/src/lib/utils.ts is missing." && exit 1)
+      - name: Install frontend dependencies
+        run: npm ci --legacy-peer-deps
+      - name: Type-check frontend
+        run: npx tsc --noEmit --pretty false
+      - name: Build frontend
+        run: npm run build:ci
+
+  docker-build:
+    runs-on: ubuntu-latest
+    needs:
+      - backend-tests
+      - frontend-build
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build backend production image
+        run: docker build --pull --tag lightwms-backend:ci ./backend
+      - name: Build frontend production image
+        run: docker build --pull --tag lightwms-frontend:ci ./frontend

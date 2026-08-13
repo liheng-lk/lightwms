@@ -1,6 +1,6 @@
 # Multi-stage build for LightWMS backend
 # Stage 1: Build stage
-FROM python:3.11-slim as builder
+FROM python:3.11-slim-bookworm AS builder
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -10,25 +10,21 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# 使用清华源加速
-RUN sed -i 's/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list.d/debian.sources
-
-# Install build dependencies
+# Install build dependencies from the pinned Debian release.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# 使用清华pip源
-RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
-
-# Install Python dependencies
+# Resolve the complete dependency graph once and build a local wheelhouse.
+# Do not use --no-deps here: independent wheel selection can combine mutually
+# incompatible versions even when a normal `pip install -r` would resolve them.
 COPY requirements.txt .
-RUN pip wheel --no-cache-dir --no-deps --wheel-dir /app/wheels -r requirements.txt
+RUN pip wheel --no-cache-dir --wheel-dir /app/wheels -r requirements.txt
 
 
 # Stage 2: Production stage
-FROM python:3.11-slim as production
+FROM python:3.11-slim-bookworm AS production
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -38,14 +34,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR $APP_HOME
 
-# 使用清华源加速
-RUN sed -i 's/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list.d/debian.sources
-
-# Install runtime dependencies including libvips for pyvips
+# Keep the runtime tied to Debian bookworm so libvips package names are stable
+# and Docker builds do not depend on a third-party mirror changing underneath us.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     libvips42 \
-    libvips-dev \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
@@ -53,9 +46,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN groupadd --gid 1000 appgroup \
     && useradd --uid 1000 --gid appgroup --shell /bin/bash --create-home appuser
 
-# Copy wheels from builder stage and install
+# Install only from the resolved wheelhouse produced by the builder.
 COPY --from=builder /app/wheels /wheels
-RUN pip install --no-cache-dir /wheels/* \
+COPY requirements.txt .
+RUN pip install --no-cache-dir --no-index --find-links=/wheels -r requirements.txt \
     && rm -rf /wheels
 
 # Copy application code

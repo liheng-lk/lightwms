@@ -190,3 +190,25 @@ CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:
 LOGIN_RATE_LIMIT_THRESHOLD = int(os.environ.get('LOGIN_RATE_LIMIT_THRESHOLD', '10'))
 LOGIN_RATE_LIMIT_WINDOW = int(os.environ.get('LOGIN_RATE_LIMIT_WINDOW', '300'))  # 5 minutes
 LOGIN_RATE_LIMIT_BLOCK_TTL = int(os.environ.get('LOGIN_RATE_LIMIT_BLOCK_TTL', '900'))  # 15 minutes
+
+# Forwarded client-IP headers influence login rate limiting and LoginLog.
+# Secure default: trust none. Docker deployments should configure the private
+# reverse-proxy network explicitly, e.g. 172.16.0.0/12.
+TRUSTED_PROXY_CIDRS = [
+    value.strip()
+    for value in os.environ.get('TRUSTED_PROXY_CIDRS', '').split(',')
+    if value.strip()
+]
+
+# WeChat OAuth redirect allow-list. The callback may only use an exact URI from
+# this list; by default only the configured callback itself is accepted.
+WECHAT_APP_ID = os.environ.get('WECHAT_APP_ID', 'mock_app_id')
+WECHAT_REDIRECT_URI = os.environ.get(
+    'WECHAT_REDIRECT_URI',
+    'http://localhost:8000/api/v1/auth/wechat/callback/'
+)
+WECHAT_ALLOWED_REDIRECT_URIS = [
+    value.strip()
+    for value in os.environ.get('WECHAT_ALLOWED_REDIRECT_URIS', WECHAT_REDIRECT_URI).split(',')
+    if value.strip()
+]

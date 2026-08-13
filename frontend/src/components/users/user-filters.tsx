@@ -10,7 +10,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import type { UserRole } from '@/lib/types';
 
 interface UserFiltersProps {
   search: string;
@@ -22,10 +21,11 @@ interface UserFiltersProps {
   onClear: () => void;
 }
 
-const roleOptions: { value: UserRole | ''; label: string }[] = [
+const roleOptions = [
   { value: '', label: '全部角色' },
-  { value: 'super_admin', label: '超级管理员' },
+  { value: 'read_only_user', label: '普通用户' },
   { value: 'item_manager', label: '物品管理员' },
+  { value: 'super_admin', label: '超级管理员' },
 ];
 
 const statusOptions = [
@@ -47,7 +47,6 @@ export function UserFilters({
 
   return (
     <div className="flex flex-wrap items-center gap-3">
-      {/* Search Input */}
       <div className="relative flex-1 min-w-[200px] max-w-[300px]">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
@@ -58,7 +57,6 @@ export function UserFilters({
         />
       </div>
 
-      {/* Role Filter - Requirements 18.2 */}
       <Select value={role} onValueChange={onRoleChange}>
         <SelectTrigger className="w-[140px]">
           <SelectValue placeholder="全部角色" />
@@ -72,7 +70,6 @@ export function UserFilters({
         </SelectContent>
       </Select>
 
-      {/* Status Filter - Requirements 18.2 */}
       <Select value={status} onValueChange={onStatusChange}>
         <SelectTrigger className="w-[120px]">
           <SelectValue placeholder="全部状态" />
@@ -86,7 +83,6 @@ export function UserFilters({
         </SelectContent>
       </Select>
 
-      {/* Clear Filters Button */}
       {hasFilters && (
         <Button variant="ghost" size="sm" onClick={onClear}>
           <X className="h-4 w-4 mr-1" />

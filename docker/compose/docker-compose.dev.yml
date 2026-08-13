@@ -32,7 +32,7 @@ services:
 
   backend:
     build:
-      context: ./backend
+      context: ../../backend
       dockerfile: Dockerfile
     container_name: lightwms-backend
     environment:
@@ -54,8 +54,8 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - ./backend:/app
-      - ./backend/media:/app/media
+      - ../../backend:/app
+      - ../../backend/media:/app/media
     command: >
       sh -c "python manage.py migrate --noinput &&
              gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 2 --reload"

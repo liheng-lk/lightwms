@@ -2,7 +2,8 @@
 URL configuration for audit app.
 """
 from django.urls import path
-from .views import (
+
+from .query_views import (
     AuditLogListView,
     AuditLogResourceHistoryView,
     AuditLogUserActivityView,
@@ -10,7 +11,6 @@ from .views import (
 )
 
 urlpatterns = [
-    # Audit logs
     path('audit-logs/', AuditLogListView.as_view(), name='audit-log-list'),
     path(
         'audit-logs/resource/<str:type>/<int:id>/',
@@ -22,7 +22,5 @@ urlpatterns = [
         AuditLogUserActivityView.as_view(),
         name='audit-log-user-activity'
     ),
-    
-    # Login logs
     path('login-logs/', LoginLogListView.as_view(), name='login-log-list'),
 ]

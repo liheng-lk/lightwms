@@ -1,76 +1,36 @@
-"""
-Role utility functions for LightWMS.
-
-This module provides safe role checking functions that work with the User model's
-properties instead of string comparisons. This ensures consistency and avoids
-bugs from typos or case mismatches.
-
-Usage:
-    from core.role_utils import is_super_admin, is_item_manager
-    
-    if is_super_admin(user):
-        # Super admin logic
-    
-    if is_item_manager(user):
-        # Item manager logic
-"""
+"""Role utility functions for LightWMS."""
 from typing import Optional, Any
 
 
+def _is_authenticated(user: Optional[Any]) -> bool:
+    return bool(user is not None and getattr(user, 'is_authenticated', False))
+
+
 def is_super_admin(user: Optional[Any]) -> bool:
-    """
-    Check if user is a Super Admin.
-    
-    Uses the User model's is_super_admin property for safe comparison.
-    
-    Args:
-        user: User object or None
-        
-    Returns:
-        True if user is authenticated and has super_admin role
-    """
-    if user is None:
+    if not _is_authenticated(user):
         return False
-    if not getattr(user, 'is_authenticated', False):
-        return False
-    return getattr(user, 'is_super_admin', False)
+    return bool(getattr(user, 'is_super_admin', False))
 
 
 def is_item_manager(user: Optional[Any]) -> bool:
-    """
-    Check if user is an Item Manager.
-    
-    Uses the User model's is_item_manager property for safe comparison.
-    
-    Args:
-        user: User object or None
-        
-    Returns:
-        True if user is authenticated and has item_manager role
-    """
-    if user is None:
+    if not _is_authenticated(user):
         return False
-    if not getattr(user, 'is_authenticated', False):
+    return bool(getattr(user, 'is_item_manager', False))
+
+
+def is_read_only_user(user: Optional[Any]) -> bool:
+    if not _is_authenticated(user):
         return False
-    return getattr(user, 'is_item_manager', False)
+    return bool(getattr(user, 'is_read_only_user', False))
 
 
 def can_manage_item(user: Optional[Any], item: Any) -> bool:
     """
-    Check if user can manage (update/delete) an item.
-    
-    Super Admin can manage any item.
-    Item Manager can manage any item.
-    
-    Args:
-        user: User object or None
-        item: Item object with owner_id attribute
-        
-    Returns:
-        True if user can manage the item
+    Super Admin can manage any item; Item Manager can manage only owned items.
+    Ordinary users never mutate inventory.
     """
     if is_super_admin(user):
         return True
     if is_item_manager(user):
-        return True
+        return getattr(item, 'owner_id', None) == getattr(user, 'id', None)
     return False
