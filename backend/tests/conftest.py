@@ -34,20 +34,23 @@ def issue_legacy_wechat_state(request):
 def assign_legacy_location_owner(request):
     """Adapt legacy API fixtures to the mandatory Location.owner contract.
 
-    The original borrow/item API modules predate location ownership and their
-    local fixtures create Locations without an owner. Production keeps the
-    database field non-null; this compatibility fixture only supplies each
-    module's own item_manager while those unrelated API tests construct data.
+    These modules predate location ownership and create Locations without an
+    owner in setup code unrelated to the behavior under test. Production keeps
+    the database field non-null; the compatibility shim supplies each module's
+    existing manager fixture only while that legacy module constructs data.
     """
-    legacy_modules = {
-        'tests.test_borrow_api',
-        'tests.test_item_api',
+    owner_fixture_by_module = {
+        'tests.test_borrow_api': 'item_manager',
+        'tests.test_item_api': 'item_manager',
+        'tests.test_search_api': 'item_manager',
+        'tests.test_permissions_matrix': 'manager',
     }
-    if request.module.__name__ not in legacy_modules:
+    owner_fixture = owner_fixture_by_module.get(request.module.__name__)
+    if owner_fixture is None:
         yield
         return
 
-    manager = request.getfixturevalue('item_manager')
+    manager = request.getfixturevalue(owner_fixture)
     from django.db.models.signals import pre_save
     from apps.inventory.models import Location
 
