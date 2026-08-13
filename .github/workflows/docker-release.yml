@@ -1,0 +1,94 @@
+name: DockerHub Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dockerhub-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Resolve release version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release tag: $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to DockerHub
+        env:
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$DOCKERHUB_TOKEN" || (echo "DOCKERHUB_TOKEN repository secret is required" >&2; exit 1)
+          printf '%s' "$DOCKERHUB_TOKEN" | docker login --username liheng6668 --password-stdin
+
+      - name: Build backend image
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          docker build --pull \
+            --label org.opencontainers.image.source="https://github.com/${GITHUB_REPOSITORY}" \
+            --label org.opencontainers.image.revision="${GITHUB_SHA}" \
+            --label org.opencontainers.image.version="$VERSION" \
+            --tag "liheng6668/lightwms-backend:$VERSION" \
+            --tag "liheng6668/lightwms-backend:latest" \
+            ./backend
+
+      - name: Build frontend image
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          docker build --pull \
+            --label org.opencontainers.image.source="https://github.com/${GITHUB_REPOSITORY}" \
+            --label org.opencontainers.image.revision="${GITHUB_SHA}" \
+            --label org.opencontainers.image.version="$VERSION" \
+            --tag "liheng6668/lightwms-frontend:$VERSION" \
+            --tag "liheng6668/lightwms-frontend:latest" \
+            ./frontend
+
+      - name: Push backend image
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          docker push "liheng6668/lightwms-backend:$VERSION"
+          docker push "liheng6668/lightwms-backend:latest"
+
+      - name: Push frontend image
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          docker push "liheng6668/lightwms-frontend:$VERSION"
+          docker push "liheng6668/lightwms-frontend:latest"
+
+      - name: Verify published images
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker image rm "liheng6668/lightwms-backend:$VERSION" "liheng6668/lightwms-frontend:$VERSION" || true
+          docker pull "liheng6668/lightwms-backend:$VERSION"
+          docker pull "liheng6668/lightwms-frontend:$VERSION"
+          echo "Backend: $(docker image inspect --format='{{index .RepoDigests 0}}' "liheng6668/lightwms-backend:$VERSION")"
+          echo "Frontend: $(docker image inspect --format='{{index .RepoDigests 0}}' "liheng6668/lightwms-frontend:$VERSION")"
+
+      - name: Log out of DockerHub
+        if: always()
+        run: docker logout
