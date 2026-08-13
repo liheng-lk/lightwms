@@ -31,15 +31,19 @@ def issue_legacy_wechat_state(request):
 
 
 @pytest.fixture(autouse=True)
-def assign_legacy_borrow_location_owner(request):
-    """Adapt the legacy borrow module to the mandatory Location.owner contract.
+def assign_legacy_location_owner(request):
+    """Adapt legacy API fixtures to the mandatory Location.owner contract.
 
-    ``tests.test_borrow_api`` predates location ownership and its local fixture
-    still creates a Location without an owner. Production keeps the database
-    field non-null; this compatibility fixture only supplies the module's own
-    item_manager while those borrow/return tests construct their location.
+    The original borrow/item API modules predate location ownership and their
+    local fixtures create Locations without an owner. Production keeps the
+    database field non-null; this compatibility fixture only supplies each
+    module's own item_manager while those unrelated API tests construct data.
     """
-    if request.module.__name__ != 'tests.test_borrow_api':
+    legacy_modules = {
+        'tests.test_borrow_api',
+        'tests.test_item_api',
+    }
+    if request.module.__name__ not in legacy_modules:
         yield
         return
 
@@ -47,7 +51,7 @@ def assign_legacy_borrow_location_owner(request):
     from django.db.models.signals import pre_save
     from apps.inventory.models import Location
 
-    dispatch_uid = 'tests.assign_legacy_borrow_location_owner'
+    dispatch_uid = 'tests.assign_legacy_location_owner'
 
     def ensure_owner(sender, instance, **kwargs):
         if instance.owner_id is None:
