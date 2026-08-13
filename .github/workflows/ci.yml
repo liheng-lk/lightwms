@@ -114,7 +114,7 @@ jobs:
           PY
       - name: Verify frontend source integrity
         run: |
-          test -d src/lib || (echo "ERROR: frontend/src/lib is missing from Git. Check root .gitignore and restore the source directory." && exit 1)
+          test -d src/lib || (echo "ERROR: frontend/src/lib is missing from Git." && exit 1)
           test -f src/lib/utils.ts || (echo "ERROR: frontend/src/lib/utils.ts is missing." && exit 1)
       - name: Install frontend dependencies
         run: npm ci --legacy-peer-deps
@@ -130,7 +130,111 @@ jobs:
       - frontend-build
     steps:
       - uses: actions/checkout@v5
+      - name: Validate direct-access compose file
+        shell: bash
+        run: |
+          set -euo pipefail
+          services="$(SECRET_KEY=ci-secret POSTGRES_PASSWORD=ci-password docker compose -f docker/compose/docker-compose.dockerhub.yml config --services)"
+          echo "$services"
+          echo "$services" | grep -qx 'frontend'
+          echo "$services" | grep -qx 'backend'
+          if echo "$services" | grep -qx 'nginx'; then
+            echo 'DockerHub deployment must not require an nginx service.' >&2
+            exit 1
+          fi
       - name: Build backend production image
         run: docker build --pull --tag lightwms-backend:ci ./backend
       - name: Build frontend production image
         run: docker build --pull --tag lightwms-frontend:ci ./frontend
+      - name: Smoke test direct IP and port access
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/lightwms-mock-backend.py" <<'PY'
+          from http.server import BaseHTTPRequestHandler, HTTPServer
+
+          class Handler(BaseHTTPRequestHandler):
+              def send_body(self, status, body, content_type):
+                  self.send_response(status)
+                  self.send_header('Content-Type', content_type)
+                  self.send_header('Content-Length', str(len(body)))
+                  self.end_headers()
+                  if self.command != 'HEAD':
+                      self.wfile.write(body)
+
+              def do_GET(self):
+                  if self.path.startswith('/api/v1/health/'):
+                      self.send_body(200, b'{"status":"ok"}', 'application/json')
+                  elif self.path.startswith('/media/smoke.txt'):
+                      self.send_body(200, b'smoke', 'text/plain')
+                  else:
+                      self.send_body(404, b'not found', 'text/plain')
+
+              def do_HEAD(self):
+                  self.do_GET()
+
+              def do_POST(self):
+                  length = int(self.headers.get('Content-Length', '0'))
+                  if length:
+                      self.rfile.read(length)
+                  if self.path.startswith('/api/v1/auth/login/'):
+                      self.send_body(200, b'{"access":"access-smoke","refresh":"refresh-smoke"}', 'application/json')
+                  else:
+                      self.send_body(404, b'not found', 'text/plain')
+
+              def log_message(self, *_args):
+                  pass
+
+          HTTPServer(('0.0.0.0', 8000), Handler).serve_forever()
+          PY
+
+          cleanup() {
+            docker rm -f lightwms-frontend-smoke backend >/dev/null 2>&1 || true
+            docker network rm lightwms-smoke >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker network create lightwms-smoke >/dev/null
+          docker run -d --name backend --network lightwms-smoke \
+            -v "$RUNNER_TEMP/lightwms-mock-backend.py:/mock.py:ro" \
+            python:3.11-alpine python /mock.py >/dev/null
+          docker run -d --name lightwms-frontend-smoke --network lightwms-smoke \
+            -p 3100:3000 \
+            -e BACKEND_URL=http://backend:8000 \
+            -e SECURE_COOKIES=false \
+            lightwms-frontend:ci >/dev/null
+
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3100/login/ >/dev/null 2>&1; then
+              break
+            fi
+            if [ "$attempt" -eq 60 ]; then
+              docker logs lightwms-frontend-smoke
+              exit 1
+            fi
+            sleep 1
+          done
+
+          redirect_headers="$(curl -sS -D - -o /dev/null http://127.0.0.1:3100/)"
+          echo "$redirect_headers"
+          # A relative redirect is ideal for LAN access: the browser preserves
+          # the exact current IP and explicit host port automatically.
+          echo "$redirect_headers" | grep -Eiq '^location: /login/'
+
+          health="$(curl -fsS http://127.0.0.1:3100/api/wms/health/)"
+          echo "$health" | grep -q '"status":"ok"'
+
+          media="$(curl -fsS http://127.0.0.1:3100/media/smoke.txt)"
+          test "$media" = 'smoke'
+
+          login_headers="$(curl -sS -D - -o /dev/null \
+            -H 'Content-Type: application/json' \
+            --data '{"username":"smoke","password":"smoke"}' \
+            http://127.0.0.1:3100/api/auth/login/)"
+          echo "$login_headers"
+          echo "$login_headers" | grep -Eiq '^set-cookie: access_token='
+          echo "$login_headers" | grep -Eiq '^set-cookie: refresh_token='
+          if echo "$login_headers" | grep -Eiq '^set-cookie: .*;[[:space:]]*Secure([;[:space:]]|$)'; then
+            echo 'HTTP direct-access cookies must not be Secure.' >&2
+            exit 1
+          fi

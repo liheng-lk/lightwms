@@ -5,134 +5,110 @@
 [![Node.js](https://img.shields.io/badge/Node.js-22+-green.svg)](https://nodejs.org/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://www.docker.com/)
 
-一个面向日常仓库现场操作的轻量级仓库管理系统，支持物品管理、借用/归还、领用/补货、扫码和审计追踪。
+LightWMS 是一个轻量级仓库管理系统，支持物品、借还、领用补货、扫码、发票、审计、角色权限和系统设置。
 
-## 功能特性
+## DockerHub 快速部署
 
-- 📦 物品管理：分类、库位、条码、图片
-- 🔄 借用/归还：记录追踪与批量管理
-- 📤 领用/补货：库存追踪和数量管理
-- 👥 用户管理：角色权限与邀请码管理
-- 📊 审计日志：操作记录和登录日志
-- 📱 移动端适配：支持手机扫码操作
-- 🏷️ 条码打印：批量打印条码标签
-- 📥 导入导出：Excel 批量导入导出
-- 🎨 主题设置：明暗主题切换、自定义 Logo
-- 🧾 发票管理：采购发票记录
+当前默认部署方式是 **本地/局域网 IP + 端口直接访问**：
+
+```text
+浏览器 -> http://NAS或主机IP:3000 -> Next.js frontend -> Docker 内网 backend:8000
+```
+
+默认部署 **不启动 Nginx、不映射容器 80 端口、不把浏览器重定向到其他端口**。API 和上传文件都由前端同源转发，因此浏览器只需要访问一个端口。
+
+```bash
+# 1. 克隆仓库
+git clone https://github.com/liheng-lk/lightwms.git
+cd lightwms
+
+# 2. 创建环境变量
+cp docker/.env.example .env
+# 必须修改 SECRET_KEY 和 POSTGRES_PASSWORD
+
+# 3. 推荐固定正式版本
+# .env 中设置：LIGHTWMS_VERSION=1.1.1
+
+# 4. 启动
+docker compose -f docker/compose/docker-compose.dockerhub.yml pull
+docker compose -f docker/compose/docker-compose.dockerhub.yml up -d
+
+# 5. 创建管理员
+docker compose -f docker/compose/docker-compose.dockerhub.yml exec backend python manage.py createsuperuser
+```
+
+局域网访问示例：
+
+```text
+http://192.168.1.20:3000
+```
+
+如果希望改端口，只修改 `.env`：
+
+```text
+HTTP_PORT=18080
+```
+
+然后访问：
+
+```text
+http://192.168.1.20:18080
+```
+
+## HTTP / HTTPS Cookie
+
+本地 IP+端口默认是 HTTP，因此：
+
+```text
+SECURE_COOKIES=false
+```
+
+只有在浏览器实际通过 HTTPS 访问时才设置：
+
+```text
+SECURE_COOKIES=true
+```
+
+## Docker 镜像
+
+| 服务 | 正式版本 | 最新版本 |
+|---|---|---|
+| Backend | `liheng6668/lightwms-backend:1.1.1` | `liheng6668/lightwms-backend:latest` |
+| Frontend | `liheng6668/lightwms-frontend:1.1.1` | `liheng6668/lightwms-frontend:latest` |
+
+生产环境建议固定 `LIGHTWMS_VERSION=1.1.1`，确认升级后再切换版本。
+
+## 功能
+
+- 物品、分类、仓库、库位管理
+- 借用、归还、领用、补货
+- 条码扫码与批量导入导出
+- 发票管理
+- 用户、角色和邀请码
+- 审计日志和登录日志
+- 系统 Logo 与设置
+- 移动端适配
 
 ## 技术栈
 
 | 类型 | 技术 |
-|------|------|
-| 前端 | Next.js 16, React 19, TypeScript, Tailwind CSS, shadcn/ui |
-| 后端 | Django 4.2, Django REST Framework, Python 3.10+ |
-| 数据库 | PostgreSQL, Redis |
-| 部署 | Docker, Nginx |
+|---|---|
+| 前端 | Next.js 16, React 19, TypeScript |
+| 后端 | Django 4.2, Django REST Framework |
+| 数据库 | PostgreSQL 15 |
+| 缓存 | Redis 7 |
+| 部署 | Docker Compose |
 
-## 项目结构
-
-```text
-lightwms/
-├── frontend/          # Next.js 前端
-├── backend/           # Django 后端
-├── docker/            # Docker 部署配置
-│   ├── compose/       # Docker Compose 文件
-│   ├── config/        # 容器配置文件
-│   ├── nginx/         # Nginx 配置
-│   └── scripts/       # 部署脚本
-├── LICENSE            # 开源协议
-├── README.md          # 项目说明
-├── CONTRIBUTING.md    # 贡献指南
-└── DEPLOYMENT.md      # 部署文档
-```
-
-## 快速开始
-
-### DockerHub 镜像部署
-
-```bash
-# 1. 克隆项目
-git clone https://github.com/liheng-lk/lightwms.git
-cd lightwms
-
-# 2. 复制环境变量并修改生产密钥/数据库密码
-cp docker/.env.example .env
-# 必须修改 .env 中的 SECRET_KEY 和 POSTGRES_PASSWORD
-
-# 3. 启动
-docker compose -f docker/compose/docker-compose.dockerhub.yml up -d
-
-# 4. 首次部署创建管理员（不要使用固定默认密码）
-docker compose -f docker/compose/docker-compose.dockerhub.yml exec backend python manage.py createsuperuser
-```
-
-### 访问系统
-
-默认统一入口：`http://localhost:3000`
-
-LightWMS **不应提供公开的固定管理员密码或固定邀请码**。管理员账户请在首次部署时创建；邀请码请登录后由管理员按需生成并设置使用次数、有效期和默认角色。
-
-## Docker 镜像
-
-| 镜像 | 地址 |
-|------|------|
-| 后端 | `liheng6668/lightwms-backend:latest` |
-| 前端 | `liheng6668/lightwms-frontend:latest` |
-
-正式版本同时发布语义化版本标签，例如 `:1.1.0`；生产环境建议固定版本标签，确认升级后再切换，而不是长期只依赖 `:latest`。
-
-发布后可以先显式拉取固定版本进行部署前校验：
-
-```bash
-docker pull liheng6668/lightwms-backend:1.1.0
-docker pull liheng6668/lightwms-frontend:1.1.0
-```
-
-## 本地开发
-
-### 后端
-
-```bash
-cd backend
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-python manage.py migrate
-python manage.py runserver
-```
-
-### 前端
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-## 文档
-
-- [部署文档](DEPLOYMENT.md) - 详细的部署指南
-- [Docker 配置](docker/README.md) - Docker 相关配置说明
-- [贡献指南](CONTRIBUTING.md) - 如何参与贡献
+详细部署说明见 [DEPLOYMENT.md](DEPLOYMENT.md)。
 
 ## 安全
 
-生产环境至少应做到：
+- 修改默认 `SECRET_KEY` 和 PostgreSQL 密码
+- 不公开固定管理员密码或邀请码
+- 互联网暴露时使用 HTTPS
+- HTTPS 部署时设置 `SECURE_COOKIES=true`
+- 定期备份 PostgreSQL 与上传文件
 
-- 使用随机且唯一的 `SECRET_KEY`
-- 使用高强度 PostgreSQL 密码
-- 不公开固定管理员凭据或固定邀请码
-- 公网部署启用 HTTPS，并正确设置可信域名和 CSRF 来源
-- 定期备份 PostgreSQL 数据和上传的媒体文件
+## License
 
-如果发现安全漏洞，请查看 [安全政策](SECURITY.md) 了解如何报告。
-
-## 开源协议
-
-本项目采用 [MIT License](LICENSE) 开源协议。
-
-你可以免费使用、复制、修改、合并、发布、分发，用于商业或私有用途；唯一要求是保留原始版权声明和许可声明。
-
-## 联系
-
-如有问题，请通过 GitHub Issues 联系。
+MIT License
