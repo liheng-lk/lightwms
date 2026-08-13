@@ -5,7 +5,7 @@ const REFRESH_COOKIE = 'refresh_token';
 
 const baseOptions = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
+  secure: process.env.SECURE_COOKIES === 'true',
   sameSite: 'lax' as const,
   path: '/',
 };
