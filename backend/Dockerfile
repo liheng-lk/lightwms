@@ -16,9 +16,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
+# Resolve the complete dependency graph once and build a local wheelhouse.
+# Do not use --no-deps here: independent wheel selection can combine mutually
+# incompatible versions even when a normal `pip install -r` would resolve them.
 COPY requirements.txt .
-RUN pip wheel --no-cache-dir --no-deps --wheel-dir /app/wheels -r requirements.txt
+RUN pip wheel --no-cache-dir --wheel-dir /app/wheels -r requirements.txt
 
 
 # Stage 2: Production stage
@@ -44,9 +46,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN groupadd --gid 1000 appgroup \
     && useradd --uid 1000 --gid appgroup --shell /bin/bash --create-home appuser
 
-# Copy wheels from builder stage and install
+# Install only from the resolved wheelhouse produced by the builder.
 COPY --from=builder /app/wheels /wheels
-RUN pip install --no-cache-dir /wheels/* \
+COPY requirements.txt .
+RUN pip install --no-cache-dir --no-index --find-links=/wheels -r requirements.txt \
     && rm -rf /wheels
 
 # Copy application code
