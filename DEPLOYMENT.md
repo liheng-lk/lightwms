@@ -1,382 +1,191 @@
-# LightWMS Deployment Guide
+# LightWMS 部署指南
 
-## Prerequisites
+## 推荐架构
 
-- Docker 20.10+
-- Docker Compose 2.0+
-- At least 2GB RAM
-- 10GB disk space
-- **PostgreSQL 15+** (required - SQLite is not supported for production)
+LightWMS 默认使用单一浏览器入口，不需要额外 Nginx：
 
-## Important: PostgreSQL Required
-
-LightWMS requires PostgreSQL and uses the following PostgreSQL-specific features:
-- `pg_trgm` extension for fuzzy search
-- `tsvector` / GIN indexes for full-text search
-- Partial unique indexes (e.g., `WHERE status = 'active'`)
-- Database triggers for audit log immutability
-
-**SQLite is NOT supported** for production use.
-
----
-
-## Quick Start (Production)
-
-### 1. 配置环境变量
-
-```bash
-# 复制示例配置文件
-cp .env.production.example .env.production
-
-# 编辑配置（必须修改 SECRET_KEY 和数据库密码）
-nano .env.production
+```text
+浏览器
+  |
+  | http://主机IP:HTTP_PORT
+  v
+Next.js frontend :3000
+  |
+  | Docker 内网
+  v
+Django backend :8000
+  |          |
+PostgreSQL    Redis
 ```
 
-### 2. 构建并启动
+浏览器始终只访问 `IP:端口`。前端将 `/api/wms/*` 和 `/media/*` 转发到 Docker 内部 backend，不向浏览器暴露 8000，也不经过容器 80 端口。
+
+## DockerHub 部署
+
+### 1. 创建配置
 
 ```bash
-# 构建镜像
-docker compose -f docker-compose.production.yml build
+cp docker/.env.example .env
+```
 
-# 启动服务
-docker compose -f docker-compose.production.yml --env-file .env.production up -d
+至少修改：
 
+```text
+SECRET_KEY=<随机长密钥>
+POSTGRES_PASSWORD=<高强度密码>
+LIGHTWMS_VERSION=1.1.1
+HTTP_PORT=3000
+SECURE_COOKIES=false
+```
+
+本地或局域网通常通过 HTTP 使用 `IP:端口`，因此 `SECURE_COOKIES=false`。只有浏览器实际通过 HTTPS 访问时才设为 `true`。
+
+### 2. 拉取和启动
+
+```bash
+docker compose -f docker/compose/docker-compose.dockerhub.yml pull
+docker compose -f docker/compose/docker-compose.dockerhub.yml up -d
+```
+
+### 3. 查看状态
+
+```bash
+docker compose -f docker/compose/docker-compose.dockerhub.yml ps
+```
+
+应看到：
+
+- `lightwms-db`
+- `lightwms-redis`
+- `lightwms-backend`
+- `lightwms-frontend`
+
+默认部署不再包含 `lightwms-nginx`。
+
+### 4. 创建管理员
+
+```bash
+docker compose -f docker/compose/docker-compose.dockerhub.yml exec backend python manage.py createsuperuser
+```
+
+### 5. 浏览器访问
+
+如果主机 IP 是 `192.168.1.20`，默认地址：
+
+```text
+http://192.168.1.20:3000
+```
+
+若 `.env` 设置：
+
+```text
+HTTP_PORT=18080
+```
+
+则访问：
+
+```text
+http://192.168.1.20:18080
+```
+
+页面内部登录跳转会继续保留当前主机和端口，不会主动剥掉 `:3000` 或切到 `:80`。
+
+## 更新版本
+
+```bash
+# 修改 .env，例如：
+LIGHTWMS_VERSION=1.1.1
+
+# 拉取固定版本并重建容器
+docker compose -f docker/compose/docker-compose.dockerhub.yml pull
+docker compose -f docker/compose/docker-compose.dockerhub.yml up -d
+```
+
+生产环境建议固定版本号，不建议长期跟随 `latest`。
+
+## 常用命令
+
+```bash
 # 查看日志
-docker compose -f docker-compose.production.yml logs -f app
+docker compose -f docker/compose/docker-compose.dockerhub.yml logs -f
+
+# 查看前端日志
+docker compose -f docker/compose/docker-compose.dockerhub.yml logs -f frontend
+
+# 查看后端日志
+docker compose -f docker/compose/docker-compose.dockerhub.yml logs -f backend
+
+# 重启
+docker compose -f docker/compose/docker-compose.dockerhub.yml restart
+
+# 停止
+docker compose -f docker/compose/docker-compose.dockerhub.yml down
 ```
 
-### 3. 访问应用
+## 媒体文件
 
-- Web UI: http://localhost/
-- API: http://localhost/api/v1/
-- API Docs: http://localhost/api/v1/docs/
-- Admin: http://localhost/admin/
+上传图片和 Logo 保存在 `media_data` volume 中。浏览器访问 `/media/*` 时由 Next.js 同源转发到 backend，因此删除 Nginx 后图片仍通过同一个 `IP:HTTP_PORT` 提供。
 
----
+## 数据持久化
 
-## Deployment Options
+默认 volumes：
 
-### Option 1: Unified Image (推荐生产环境)
-
-使用统一镜像部署，前端、后端、Nginx 打包在一个容器中：
-
-```bash
-# 构建并启动
-docker compose -f docker-compose.production.yml --env-file .env.production up -d --build
-
-# 查看状态
-docker compose -f docker-compose.production.yml ps
-
-# 查看日志
-docker compose -f docker-compose.production.yml logs -f app
-
-# 停止服务
-docker compose -f docker-compose.production.yml down
-```
-
-**统一镜像架构：**
-```
-┌─────────────────────────────────────────┐
-│           lightwms-app 容器              │
-│  ┌─────────┐  ┌─────────┐  ┌─────────┐  │
-│  │  Nginx  │──│ Gunicorn│  │ Next.js │  │
-│  │  :80    │  │  :8000  │  │  :3000  │  │
-│  └────┬────┘  └────┬────┘  └────┬────┘  │
-│       │            │            │        │
-│       └────────────┴────────────┘        │
-│              Supervisor 管理              │
-└─────────────────────────────────────────┘
-         │                    │
-    ┌────▼────┐          ┌────▼────┐
-    │PostgreSQL│          │  Redis  │
-    │lightwms-db│         │lightwms-│
-    └──────────┘          │ redis   │
-                          └─────────┘
-```
-
-### Option 2: Development Mode (开发环境)
-
-用于开发环境，前端和后端分开运行：
-
-```bash
-# 启动后端服务（数据库、Redis、Django）
-docker compose up -d
-
-# 启动前端开发服务器
-cd frontend
-npm install
-npm run dev
-```
-
-访问地址：
-- Frontend: http://localhost:3000/
-- Backend API: http://localhost:8000/api/v1/
-
----
-
-## Configuration
-
-### Required Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `SECRET_KEY` | Django 密钥（必须修改） | (required) |
-| `POSTGRES_PASSWORD` | 数据库密码（必须修改） | (required) |
-| `ALLOWED_HOSTS` | 允许的主机名（逗号分隔） | localhost |
-
-### Optional Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `CORS_ALLOWED_ORIGINS` | CORS 允许的源 | http://localhost |
-| `CSRF_TRUSTED_ORIGINS` | CSRF 信任的源 | http://localhost |
-| `HTTP_PORT` | HTTP 端口 | 80 |
-| `SECURE_SSL_REDIRECT` | 强制 HTTPS | False |
-| `CREATE_SUPERUSER` | 首次启动创建管理员 | false |
-| `DJANGO_SUPERUSER_USERNAME` | 管理员用户名 | admin |
-| `DJANGO_SUPERUSER_PASSWORD` | 管理员密码 | admin123 |
-
----
-
-## Management Commands
-
-### 服务管理
-
-```bash
-# 启动服务
-docker compose -f docker-compose.production.yml up -d
-
-# 停止服务
-docker compose -f docker-compose.production.yml down
-
-# 重启服务
-docker compose -f docker-compose.production.yml restart app
-
-# 查看状态
-docker compose -f docker-compose.production.yml ps
-
-# 查看日志
-docker compose -f docker-compose.production.yml logs -f app
-docker compose -f docker-compose.production.yml logs -f db
-```
-
-### 数据库管理
-
-```bash
-# 进入 Django shell
-docker exec -it lightwms-app python /app/backend/manage.py shell
-
-# 运行迁移
-docker exec -it lightwms-app python /app/backend/manage.py migrate
-
-# 创建超级用户
-docker exec -it lightwms-app python /app/backend/manage.py createsuperuser
-
-# 收集静态文件
-docker exec -it lightwms-app python /app/backend/manage.py collectstatic --noinput
-```
-
-### 容器内调试
-
-```bash
-# 进入应用容器
-docker exec -it lightwms-app bash
-
-# 查看 supervisor 状态
-docker exec -it lightwms-app supervisorctl status
-
-# 重启单个服务
-docker exec -it lightwms-app supervisorctl restart gunicorn
-docker exec -it lightwms-app supervisorctl restart nextjs
-docker exec -it lightwms-app supervisorctl restart nginx
-```
-
----
-
-## Backup & Restore
-
-### 启用备份服务
-
-```bash
-# 使用 --profile backup 启动备份服务
-docker compose -f docker-compose.production.yml --profile backup up -d
-```
-
-### 手动备份
-
-```bash
-# 运行手动备份
-docker exec lightwms-backup /scripts/backup.sh daily
-
-# 备份文件位置
-ls -la backup_data/
-```
-
-### 恢复数据
-
-```bash
-# 列出可用备份
-docker exec lightwms-backup /scripts/restore.sh --list
-
-# 恢复备份（警告：会覆盖当前数据）
-docker exec lightwms-backup /scripts/restore.sh /backups/daily/2024-01-15.sql.gz
-```
-
----
-
-## SSL/HTTPS Setup
-
-### 使用 Let's Encrypt
-
-1. 确保域名已解析到服务器
-2. 修改 `.env.production`:
-   ```
-   ALLOWED_HOSTS=your-domain.com
-   CORS_ALLOWED_ORIGINS=https://your-domain.com
-   CSRF_TRUSTED_ORIGINS=https://your-domain.com
-   SECURE_SSL_REDIRECT=True
-   ```
-
-3. 使用 certbot 或其他工具获取证书
-
-### 使用自签名证书（测试用）
-
-```bash
-# 生成自签名证书
-openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-  -keyout nginx/ssl/key.pem \
-  -out nginx/ssl/cert.pem
-```
-
----
-
-## Troubleshooting
-
-### 检查服务状态
-
-```bash
-# 查看所有容器状态
-docker compose -f docker-compose.production.yml ps
-
-# 查看应用日志
-docker compose -f docker-compose.production.yml logs app
-
-# 查看 supervisor 进程状态
-docker exec lightwms-app supervisorctl status
-```
-
-### 常见问题
-
-**1. 数据库连接失败**
-```bash
-# 检查数据库是否就绪
-docker exec lightwms-db pg_isready -U lightwms
-
-# 查看数据库日志
-docker compose -f docker-compose.production.yml logs db
-```
-
-**2. 前端页面空白**
-```bash
-# 检查 Next.js 是否运行
-docker exec lightwms-app supervisorctl status nextjs
-
-# 查看 Next.js 日志
-docker exec lightwms-app cat /var/log/lightwms/nextjs_error.log
-```
-
-**3. API 返回 502**
-```bash
-# 检查 Gunicorn 是否运行
-docker exec lightwms-app supervisorctl status gunicorn
-
-# 查看 Gunicorn 日志
-docker exec lightwms-app cat /var/log/lightwms/gunicorn_error.log
-```
-
-**4. 重置所有数据**
-```bash
-# 停止并删除所有数据卷
-docker compose -f docker-compose.production.yml down -v
-
-# 重新启动
-docker compose -f docker-compose.production.yml up -d
-```
-
----
-
-## Development & Testing
-
-### 运行测试（使用 PostgreSQL）
-
-```bash
-# 启动数据库
-docker compose up -d db
-
-# 设置环境变量并运行测试
-export DATABASE_URL=postgres://lightwms:lightwms_secret@localhost:5432/lightwms_test
-cd backend
-python -m pytest
-```
-
-### CI 配置示例
-
-```yaml
-# GitHub Actions
-services:
-  postgres:
-    image: postgres:15-alpine
-    env:
-      POSTGRES_DB: lightwms_test
-      POSTGRES_USER: lightwms
-      POSTGRES_PASSWORD: lightwms_secret
-    ports:
-      - 5432:5432
-
-env:
-  DATABASE_URL: postgres://lightwms:lightwms_secret@localhost:5432/lightwms_test
-```
-
----
-
-## Architecture
-
-### 生产环境架构（统一镜像）
-
-```
-                    ┌─────────────────────────────────────────┐
-                    │           lightwms-app                   │
-   HTTP :80         │  ┌─────────────────────────────────┐    │
-────────────────────┼──│            Nginx                │    │
-                    │  │  - 静态文件服务                   │    │
-                    │  │  - 反向代理                      │    │
-                    │  └──────────┬──────────┬───────────┘    │
-                    │             │          │                 │
-                    │      ┌──────▼──────┐  ┌▼───────────┐    │
-                    │      │  Gunicorn   │  │  Next.js   │    │
-                    │      │  Django API │  │  Frontend  │    │
-                    │      │   :8000     │  │   :3000    │    │
-                    │      └──────┬──────┘  └────────────┘    │
-                    │             │                            │
-                    │      ┌──────▼──────┐                    │
-                    │      │ Supervisor  │                    │
-                    │      │ 进程管理     │                    │
-                    │      └─────────────┘                    │
-                    └─────────────────────────────────────────┘
-                              │                    │
-                    ┌─────────▼─────────┐  ┌──────▼──────┐
-                    │    PostgreSQL     │  │    Redis    │
-                    │   lightwms-db     │  │lightwms-redis│
-                    └───────────────────┘  └─────────────┘
-```
-
-### 数据卷
-
-| Volume | Description |
-|--------|-------------|
+| Volume | 用途 |
+|---|---|
 | `postgres_data` | PostgreSQL 数据 |
-| `redis_data` | Redis 持久化数据 |
-| `media_data` | 上传的媒体文件 |
-| `static_data` | Django 静态文件 |
-| `logs_data` | 应用日志 |
-| `backup_data` | 数据库备份 |
+| `redis_data` | Redis 数据 |
+| `media_data` | 上传图片和文件 |
+
+升级镜像不会删除这些数据卷。
+
+## 局域网访问排查
+
+### 页面打不开
+
+确认端口映射：
+
+```bash
+docker ps --format 'table {{.Names}}\t{{.Ports}}'
+```
+
+应看到 frontend 类似：
+
+```text
+0.0.0.0:3000->3000/tcp
+```
+
+然后在其他局域网设备访问主机真实 IP，而不是 `localhost`。
+
+### 登录后仍回到登录页
+
+本地 HTTP 部署确认：
+
+```text
+SECURE_COOKIES=false
+```
+
+修改后执行：
+
+```bash
+docker compose -f docker/compose/docker-compose.dockerhub.yml up -d --force-recreate frontend
+```
+
+### 页面跳转丢端口
+
+v1.1.1 起登录跳转直接沿用浏览器当前 origin，例如：
+
+```text
+http://192.168.1.20:3000
+```
+
+不会再因为反向代理兼容逻辑去掉 3000/8000。
+
+## HTTPS
+
+如果以后需要公网 HTTPS，可以在 LightWMS 外部自行放置反向代理或隧道。LightWMS 本身仍保持 frontend 作为唯一应用入口。HTTPS 场景请设置：
+
+```text
+SECURE_COOKIES=true
+```
+
+并确保外部代理保留正确的 `Host`。
