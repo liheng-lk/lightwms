@@ -217,7 +217,9 @@ jobs:
 
           redirect_headers="$(curl -sS -D - -o /dev/null http://127.0.0.1:3100/)"
           echo "$redirect_headers"
-          echo "$redirect_headers" | grep -Eiq '^location: http://127\.0\.0\.1:3100/login/'
+          # A relative redirect is ideal for LAN access: the browser preserves
+          # the exact current IP and explicit host port automatically.
+          echo "$redirect_headers" | grep -Eiq '^location: /login/'
 
           health="$(curl -fsS http://127.0.0.1:3100/api/wms/health/)"
           echo "$health" | grep -q '"status":"ok"'
