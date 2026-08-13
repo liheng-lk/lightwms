@@ -81,6 +81,13 @@ LightWMS **不应提供公开的固定管理员密码或固定邀请码**。管�
 
 正式版本同时发布语义化版本标签，例如 `:1.1.0`；生产环境建议固定版本标签，确认升级后再切换，而不是长期只依赖 `:latest`。
 
+发布后可以先显式拉取固定版本进行部署前校验：
+
+```bash
+docker pull liheng6668/lightwms-backend:1.1.0
+docker pull liheng6668/lightwms-frontend:1.1.0
+```
+
 ## 本地开发
 
 ### 后端
