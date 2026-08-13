@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
-[![Node.js](https://img.shields.io/badge/Node.js-20+-green.svg)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-22+-green.svg)](https://nodejs.org/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://www.docker.com/)
 
 一个面向日常仓库现场操作的轻量级仓库管理系统，支持物品管理、借用/归还、领用/补货、扫码和审计追踪。
@@ -68,7 +68,7 @@ docker compose -f docker/compose/docker-compose.dockerhub.yml exec backend pytho
 
 ### 访问系统
 
-默认统一入口：`http://localhost`
+默认统一入口：`http://localhost:3000`
 
 LightWMS **不应提供公开的固定管理员密码或固定邀请码**。管理员账户请在首次部署时创建；邀请码请登录后由管理员按需生成并设置使用次数、有效期和默认角色。
 
@@ -78,6 +78,8 @@ LightWMS **不应提供公开的固定管理员密码或固定邀请码**。管�
 |------|------|
 | 后端 | `liheng6668/lightwms-backend:latest` |
 | 前端 | `liheng6668/lightwms-frontend:latest` |
+
+正式版本同时发布语义化版本标签，例如 `:1.1.0`；生产环境建议固定版本标签，确认升级后再切换，而不是长期只依赖 `:latest`。
 
 ## 本地开发
 
