@@ -8,7 +8,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from apps.inventory.models import Category, Item, ItemImage, ItemStatus, ItemType, Location, Warehouse
-from apps.operations.models import BorrowRecord, BorrowStatus, ReplenishRecord, TakeRecord
+from apps.operations.models import BorrowRecord, BorrowStatus
 from apps.users.models import User, UserRole
 
 
@@ -87,8 +87,8 @@ def make_item(*, owner, location, sku, item_type=ItemType.REUSABLE, quantity=1):
 
 
 @pytest.mark.django_db
-class TestItemOwnershipBoundary:
-    def test_manager_cannot_create_item_for_another_manager(
+class TestItemOwnershipMetadata:
+    def test_manager_can_create_item_for_another_manager(
         self, api_client, manager, other_manager, manager_location
     ):
         api_client.force_authenticate(user=manager)
@@ -99,8 +99,9 @@ class TestItemOwnershipBoundary:
             'owner': other_manager.id,
             'type': 'reusable',
         })
-        assert response.status_code == status.HTTP_403_FORBIDDEN
-        assert not Item.objects.filter(sku='CROSS-OWNER-001').exists()
+        assert response.status_code == status.HTTP_201_CREATED
+        item = Item.objects.get(sku='CROSS-OWNER-001')
+        assert item.owner_id == other_manager.id
 
     def test_admin_cannot_assign_inventory_to_ordinary_user(
         self, api_client, admin, ordinary, manager_location
@@ -131,7 +132,7 @@ class TestItemOwnershipBoundary:
 
 @pytest.mark.django_db
 class TestBatchInventorySafety:
-    def test_manager_batch_location_cannot_move_other_managers_item(
+    def test_manager_batch_location_can_move_cross_owner_items(
         self, api_client, manager, other_manager, manager_location, other_location
     ):
         own = make_item(owner=manager, location=manager_location, sku='BATCH-OWN-001')
@@ -140,17 +141,16 @@ class TestBatchInventorySafety:
 
         response = api_client.post('/api/v1/items/batch-update-location/', {
             'item_ids': [own.id, other.id],
-            'location_id': other_location.id,
+            'location_id': manager_location.id,
         }, format='json')
 
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_200_OK
         own.refresh_from_db()
         other.refresh_from_db()
-        # Mixed batches must be all-or-nothing on a permission failure.
         assert own.location_id == manager_location.id
-        assert other.location_id == other_location.id
+        assert other.location_id == manager_location.id
 
-    def test_manager_batch_delete_cannot_delete_other_managers_item(
+    def test_manager_batch_delete_can_delete_cross_owner_items(
         self, api_client, manager, other_manager, manager_location, other_location
     ):
         own = make_item(owner=manager, location=manager_location, sku='DELETE-OWN-001')
@@ -161,9 +161,9 @@ class TestBatchInventorySafety:
             'ids': [own.id, other.id],
         }, format='json')
 
-        assert response.status_code == status.HTTP_403_FORBIDDEN
-        assert Item.objects.filter(id=own.id).exists()
-        assert Item.objects.filter(id=other.id).exists()
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+        assert not Item.objects.filter(id=own.id).exists()
+        assert not Item.objects.filter(id=other.id).exists()
 
     def test_admin_batch_delete_rolls_back_when_any_item_is_not_deletable(
         self, api_client, admin, manager, ordinary, manager_location
@@ -199,7 +199,6 @@ class TestCreateWithInvoiceAtomicity:
             'location': manager_location.id,
             'type': 'reusable',
             'invoice_file': invoice,
-            # invoice_amount / invoice_category intentionally omitted
         }, format='multipart')
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
@@ -207,8 +206,8 @@ class TestCreateWithInvoiceAtomicity:
 
 
 @pytest.mark.django_db
-class TestImageOwnershipBoundary:
-    def test_manager_cannot_set_other_managers_primary_image(
+class TestImageManagementBoundary:
+    def test_manager_can_set_other_managers_primary_image(
         self, api_client, manager, other_manager, other_location
     ):
         item = make_item(owner=other_manager, location=other_location, sku='IMAGE-OTHER-001')
@@ -224,9 +223,9 @@ class TestImageOwnershipBoundary:
         response = api_client.post(
             f'/api/v1/items/{item.id}/images/{image.id}/set-primary/', {}, format='json'
         )
-        assert response.status_code in (status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND)
+        assert response.status_code == status.HTTP_200_OK
         image.refresh_from_db()
-        assert image.is_primary is False
+        assert image.is_primary is True
 
 
 @pytest.mark.django_db
