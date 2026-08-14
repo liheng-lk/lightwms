@@ -17,7 +17,7 @@ export default function LocationsPage() {
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<number | undefined>(undefined);
   const [selectedParentId, setSelectedParentId] = useState<number | undefined>(undefined);
   const queryClient = useQueryClient();
-  
+
   const { data: warehouses } = useWarehouses();
 
   const handleAddLocation = useCallback((warehouseId: number, parentId?: number) => {
@@ -61,16 +61,16 @@ export default function LocationsPage() {
             '先选择仓库，再查看或管理该仓库的库位',
             '点击库位名称可查看该位置的物品',
             '停用库位前需先移除或转移其下的物品',
-            '物品管理员只能维护自己负责的库位，超级管理员可全局维护',
+            '物品管理员可维护全部有效库存库位；负责人字段用于责任标识，不作为权限隔离',
           ]}
         />
       </div>
-      
+
       <p className="text-sm text-muted-foreground">
-        选择仓库后可查看库位结构；有管理权限的用户可维护允许范围内的库位
+        选择仓库后可查看库位结构；物品管理员和超级管理员可维护全部有效库存库位
       </p>
-      
-      <LocationTree 
+
+      <LocationTree
         showManagement={canManage}
         onAddLocation={canManage ? handleAddLocation : undefined}
         onEditLocation={canManage ? handleEditLocation : undefined}
