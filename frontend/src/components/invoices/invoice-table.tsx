@@ -45,10 +45,10 @@ interface InvoiceTableProps {
   onSelectionChange?: (ids: number[]) => void;
 }
 
-export function InvoiceTable({ 
-  invoices, 
-  isLoading, 
-  onEdit, 
+export function InvoiceTable({
+  invoices,
+  isLoading,
+  onEdit,
   onStatusChange,
   selectable = false,
   selectedIds = [],
@@ -66,7 +66,6 @@ export function InvoiceTable({
     }
   };
 
-  // Format amount as currency
   const formatAmount = (amount: number) => {
     return new Intl.NumberFormat('zh-CN', {
       style: 'currency',
@@ -74,12 +73,11 @@ export function InvoiceTable({
     }).format(amount);
   };
 
-  // Check if user can delete (without resource check for general permission)
+  // Individual invoice deletion is an inventory-management action; status
+  // approval is only rendered when the parent supplies the Super Admin handler.
   const userCanDelete = canDelete();
-  // Check if user can change status (all users can now)
-  const canChangeStatus = true;
+  const canChangeStatus = !!onStatusChange;
 
-  // Selection handlers
   const handleSelectAll = (checked: boolean) => {
     if (!onSelectionChange) return;
     if (checked) {
@@ -143,111 +141,110 @@ export function InvoiceTable({
           <TableBody>
             {invoices.map((invoice) => {
               const isSelected = selectedIds.includes(invoice.id);
-              
+
               return (
-              <TableRow key={invoice.id} data-state={isSelected ? 'selected' : undefined}>
-                {selectable && (
+                <TableRow key={invoice.id} data-state={isSelected ? 'selected' : undefined}>
+                  {selectable && (
+                    <TableCell>
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={(checked) => handleSelectItem(invoice.id, !!checked)}
+                        aria-label={`选择 ${invoice.name}`}
+                      />
+                    </TableCell>
+                  )}
                   <TableCell>
-                    <Checkbox
-                      checked={isSelected}
-                      onCheckedChange={(checked) => handleSelectItem(invoice.id, !!checked)}
-                      aria-label={`选择 ${invoice.name}`}
-                    />
+                    <div className="flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-muted-foreground" />
+                      <span className="font-medium">{invoice.name}</span>
+                    </div>
                   </TableCell>
-                )}
-                <TableCell>
-                  <div className="flex items-center gap-2">
-                    <FileText className="h-4 w-4 text-muted-foreground" />
-                    <span className="font-medium">{invoice.name}</span>
-                  </div>
-                </TableCell>
-                <TableCell className="font-mono">
-                  {formatAmount(invoice.amount)}
-                </TableCell>
-                <TableCell>
-                  <span className="text-sm">{invoice.category}</span>
-                  {invoice.custom_type && (
-                    <span className="text-xs text-muted-foreground ml-1">
-                      ({invoice.custom_type})
-                    </span>
-                  )}
-                </TableCell>
-                <TableCell>
-                  {invoice.project ? (
-                    <span className="text-sm">{invoice.project}</span>
-                  ) : (
-                    <span className="text-muted-foreground text-sm">-</span>
-                  )}
-                </TableCell>
-                <TableCell>
-                  {canChangeStatus ? (
-                    <button
-                      onClick={() => onStatusChange?.(invoice)}
-                      className="cursor-pointer"
-                    >
+                  <TableCell className="font-mono">
+                    {formatAmount(invoice.amount)}
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-sm">{invoice.category}</span>
+                    {invoice.custom_type && (
+                      <span className="text-xs text-muted-foreground ml-1">
+                        ({invoice.custom_type})
+                      </span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {invoice.project ? (
+                      <span className="text-sm">{invoice.project}</span>
+                    ) : (
+                      <span className="text-muted-foreground text-sm">-</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {canChangeStatus ? (
+                      <button
+                        onClick={() => onStatusChange?.(invoice)}
+                        className="cursor-pointer"
+                      >
+                        <InvoiceStatusBadge status={invoice.status} />
+                      </button>
+                    ) : (
                       <InvoiceStatusBadge status={invoice.status} />
-                    </button>
-                  ) : (
-                    <InvoiceStatusBadge status={invoice.status} />
-                  )}
-                </TableCell>
-                <TableCell>
-                  {invoice.item_name ? (
-                    <span className="text-sm">{invoice.item_name}</span>
-                  ) : (
-                    <span className="text-muted-foreground text-sm">-</span>
-                  )}
-                </TableCell>
-                <TableCell>
-                  <span className="text-sm">{invoice.created_by_username}</span>
-                </TableCell>
-                <TableCell>{invoice.registered_month}</TableCell>
-                <TableCell>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      {invoice.file && (
-                        <DropdownMenuItem asChild>
-                          <a
-                            href={`/api/media/${invoice.file.replace(/^\/?media\//, '')}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {invoice.item_name ? (
+                      <span className="text-sm">{invoice.item_name}</span>
+                    ) : (
+                      <span className="text-muted-foreground text-sm">-</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-sm">{invoice.created_by_username}</span>
+                  </TableCell>
+                  <TableCell>{invoice.registered_month}</TableCell>
+                  <TableCell>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        {invoice.file && (
+                          <DropdownMenuItem asChild>
+                            <a
+                              href={`/api/media/${invoice.file.replace(/^\/?media\//, '')}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              <ExternalLink className="h-4 w-4 mr-2" />
+                              查看文件
+                            </a>
+                          </DropdownMenuItem>
+                        )}
+                        {onEdit && (
+                          <DropdownMenuItem onClick={() => onEdit(invoice)}>
+                            <Pencil className="h-4 w-4 mr-2" />
+                            编辑
+                          </DropdownMenuItem>
+                        )}
+                        {userCanDelete && (
+                          <DropdownMenuItem
+                            onClick={() => setDeleteId(invoice.id)}
+                            className="text-destructive"
                           >
-                            <ExternalLink className="h-4 w-4 mr-2" />
-                            查看文件
-                          </a>
-                        </DropdownMenuItem>
-                      )}
-                      {onEdit && (
-                        <DropdownMenuItem onClick={() => onEdit(invoice)}>
-                          <Pencil className="h-4 w-4 mr-2" />
-                          编辑
-                        </DropdownMenuItem>
-                      )}
-                      {userCanDelete && (
-                        <DropdownMenuItem
-                          onClick={() => setDeleteId(invoice.id)}
-                          className="text-destructive"
-                        >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          删除
-                        </DropdownMenuItem>
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </TableCell>
-              </TableRow>
-            );
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            删除
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              );
             })}
           </TableBody>
         </Table>
       </div>
 
-      {/* Delete confirmation dialog */}
       <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -257,13 +254,13 @@ export function InvoiceTable({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeleting}>取消</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               disabled={isDeleting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {isDeleting ? '删除中...' : '删除'}
+              {isDeleting ? '删除中...' : '确认删除'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
