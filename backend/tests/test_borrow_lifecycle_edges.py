@@ -79,10 +79,7 @@ def setup_inventory(db, manager_a, manager_b):
 
 def active_record(item, borrower, operator, quantity=1):
     return BorrowRecord.objects.create(
-        item=item,
-        borrower=borrower,
-        operator=operator,
-        quantity=quantity,
+        item=item, borrower=borrower, operator=operator, quantity=quantity,
         expected_return_date=timezone.localdate() + timedelta(days=5),
         status=BorrowStatus.ACTIVE,
     )
@@ -98,15 +95,13 @@ class TestBorrowRecordVisibility:
         other = active_record(item_a, borrower_b, manager_a)
         client = APIClient()
         client.force_authenticate(user=borrower_a)
-
         response = client.get('/api/v1/borrow-records/?status=active&page_size=100')
-
         assert response.status_code == status.HTTP_200_OK
         ids = {row['id'] for row in response.data['results']}
         assert own.id in ids
         assert other.id not in ids
 
-    def test_manager_list_contains_only_current_owned_inventory_records(
+    def test_manager_list_contains_inventory_wide_records(
         self, borrower_a, manager_a, manager_b, setup_inventory
     ):
         item_a, item_b, _, _ = setup_inventory
@@ -114,13 +109,10 @@ class TestBorrowRecordVisibility:
         other = active_record(item_b, borrower_a, manager_b)
         client = APIClient()
         client.force_authenticate(user=manager_a)
-
         response = client.get('/api/v1/borrow-records/?status=active&page_size=100')
-
         assert response.status_code == status.HTTP_200_OK
         ids = {row['id'] for row in response.data['results']}
-        assert own.id in ids
-        assert other.id not in ids
+        assert {own.id, other.id}.issubset(ids)
 
 
 @pytest.mark.django_db
@@ -136,13 +128,11 @@ class TestBorrowLifecycleAfterAccountChanges:
         borrower_a.save(update_fields=['is_active'])
         client = APIClient()
         client.force_authenticate(user=manager_a)
-
         response = client.post(f'/api/v1/items/{item_a.id}/return/', {
             'borrow_record_id': record.id,
             'return_notes': 'returned after borrower account disabled',
             'condition': 'good',
         }, format='json')
-
         assert response.status_code == status.HTTP_200_OK
         record.refresh_from_db()
         assert record.status == BorrowStatus.RETURNED
@@ -155,24 +145,21 @@ class TestBorrowLifecycleAfterAccountChanges:
     ):
         item_a, _, _, loc_b = setup_inventory
         record = active_record(item_a, borrower_a, manager_a)
-        # Simulate a super-admin ownership transfer while a historical borrow is active.
         item_a.owner = manager_b
         item_a.location = loc_b
         item_a.save(update_fields=['owner', 'location', 'updated_at'])
         client = APIClient()
         client.force_authenticate(user=manager_b)
-
         response = client.post(f'/api/v1/items/{item_a.id}/return/', {
             'borrow_record_id': record.id,
             'return_notes': 'accepted by new responsible manager',
             'condition': 'good',
         }, format='json')
-
         assert response.status_code == status.HTTP_200_OK
         record.refresh_from_db()
         assert record.status == BorrowStatus.RETURNED
 
-    def test_previous_owner_loses_return_permission_after_reassignment(
+    def test_previous_owner_remains_authorized_as_inventory_manager_after_reassignment(
         self, borrower_a, manager_a, manager_b, setup_inventory
     ):
         item_a, _, _, loc_b = setup_inventory
@@ -182,11 +169,9 @@ class TestBorrowLifecycleAfterAccountChanges:
         item_a.save(update_fields=['owner', 'location', 'updated_at'])
         client = APIClient()
         client.force_authenticate(user=manager_a)
-
         response = client.post(f'/api/v1/items/{item_a.id}/return/', {
             'borrow_record_id': record.id,
         }, format='json')
-
-        assert response.status_code == status.HTTP_404_NOT_FOUND
+        assert response.status_code == status.HTTP_200_OK
         record.refresh_from_db()
-        assert record.status == BorrowStatus.ACTIVE
+        assert record.status == BorrowStatus.RETURNED
