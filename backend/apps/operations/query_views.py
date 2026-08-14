@@ -3,7 +3,7 @@ from rest_framework import serializers, status
 from rest_framework.response import Response
 
 from core.pagination import StandardPagination
-from core.role_utils import is_item_manager, is_read_only_user
+from core.role_utils import is_read_only_user
 
 from .models import BorrowStatus
 from .permission_views import (
@@ -75,7 +75,6 @@ class BorrowRecordListView(BaseBorrowRecordListView):
         data = query.validated_data
 
         borrower_id = data.get('borrower')
-        owner_id = request.user.id if is_item_manager(request.user) else None
         visible_borrower_id = request.user.id if is_read_only_user(request.user) else None
         if is_read_only_user(request.user):
             borrower_id = request.user.id
@@ -84,7 +83,7 @@ class BorrowRecordListView(BaseBorrowRecordListView):
             item_id=data.get('item'),
             borrower_id=borrower_id,
             status=data.get('status'),
-            owner_id=owner_id,
+            owner_id=None,
             visible_borrower_id=visible_borrower_id,
             start_date=data.get('start_date'),
             end_date=data.get('end_date'),
@@ -100,7 +99,6 @@ class TakeRecordListView(BaseTakeRecordListView):
         data = query.validated_data
 
         taker_id = data.get('taker')
-        owner_id = request.user.id if is_item_manager(request.user) else None
         visible_taker_id = request.user.id if is_read_only_user(request.user) else None
         if is_read_only_user(request.user):
             taker_id = request.user.id
@@ -108,7 +106,7 @@ class TakeRecordListView(BaseTakeRecordListView):
         records = ConsumableService.list_take_records(
             item_id=data.get('item'),
             taker_id=taker_id,
-            owner_id=owner_id,
+            owner_id=None,
             visible_taker_id=visible_taker_id,
             start_date=data.get('start_date'),
             end_date=data.get('end_date'),
@@ -123,11 +121,10 @@ class ReplenishRecordListView(BaseReplenishRecordListView):
             return _invalid_query(query.errors)
         data = query.validated_data
 
-        owner_id = request.user.id if is_item_manager(request.user) else None
         records = ConsumableService.list_replenish_records(
             item_id=data.get('item'),
             operator_id=data.get('operator'),
-            owner_id=owner_id,
+            owner_id=None,
             visible_operator_id=None,
             start_date=data.get('start_date'),
             end_date=data.get('end_date'),
