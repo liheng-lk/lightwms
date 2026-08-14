@@ -8,6 +8,7 @@
     "build:ci": "ALLOW_SCHEMA_FAIL=1 npm run generate-types && next build",
     "start": "next start",
     "lint": "eslint",
+    "test:permissions": "tsx src/scripts/verify-permission-contract.ts",
     "fetch-schema": "tsx src/scripts/fetch-schema.ts",
     "generate-types": "tsx src/scripts/generate-types.ts"
   },
