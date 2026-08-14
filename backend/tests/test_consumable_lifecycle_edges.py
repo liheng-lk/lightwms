@@ -76,7 +76,7 @@ def response_text(response):
 
 @pytest.mark.django_db
 class TestOwnershipTransferLedgerScope:
-    def test_historical_take_and_replenish_follow_current_item_owner(
+    def test_historical_take_and_replenish_remain_visible_to_all_managers_after_transfer(
         self, manager_a, manager_b, taker, inventory
     ):
         item, _, loc_b = inventory
@@ -88,28 +88,21 @@ class TestOwnershipTransferLedgerScope:
             item=item, operator=manager_a,
             quantity=3, notes='TRANSFER-REPLENISH-HISTORY',
         )
-
-        # Responsibility is transferred after the historical movements.
         item.owner = manager_b
         item.location = loc_b
         item.save(update_fields=['owner', 'location', 'updated_at'])
 
         client = APIClient()
-        client.force_authenticate(user=manager_b)
-        take_response = client.get('/api/v1/take-records/?page_size=100')
-        replenish_response = client.get('/api/v1/replenish-records/?page_size=100')
-        assert take_response.status_code == status.HTTP_200_OK
-        assert replenish_response.status_code == status.HTTP_200_OK
-        assert take.id in result_ids(take_response)
-        assert replenish.id in result_ids(replenish_response)
+        for manager in (manager_a, manager_b):
+            client.force_authenticate(user=manager)
+            take_response = client.get('/api/v1/take-records/?page_size=100')
+            replenish_response = client.get('/api/v1/replenish-records/?page_size=100')
+            assert take_response.status_code == status.HTTP_200_OK
+            assert replenish_response.status_code == status.HTTP_200_OK
+            assert take.id in result_ids(take_response)
+            assert replenish.id in result_ids(replenish_response)
 
-        client.force_authenticate(user=manager_a)
-        old_take_response = client.get('/api/v1/take-records/?page_size=100')
-        old_replenish_response = client.get('/api/v1/replenish-records/?page_size=100')
-        assert take.id not in result_ids(old_take_response)
-        assert replenish.id not in result_ids(old_replenish_response)
-
-    def test_exports_follow_current_item_owner_after_transfer(
+    def test_exports_remain_visible_to_all_managers_after_transfer(
         self, manager_a, manager_b, taker, inventory
     ):
         item, _, loc_b = inventory
@@ -126,19 +119,16 @@ class TestOwnershipTransferLedgerScope:
         item.save(update_fields=['owner', 'location', 'updated_at'])
 
         client = APIClient()
-        client.force_authenticate(user=manager_b)
-        new_take = response_text(client.get('/api/v1/export/take-records/?file_format=csv'))
-        new_replenish = response_text(client.get('/api/v1/export/replenish-records/?file_format=csv'))
-        assert 'TRANSFER-TAKE-EXPORT' in new_take
-        assert 'TRANSFER-REPLENISH-EXPORT' in new_replenish
+        for manager in (manager_a, manager_b):
+            client.force_authenticate(user=manager)
+            take_csv = response_text(client.get('/api/v1/export/take-records/?file_format=csv'))
+            replenish_csv = response_text(
+                client.get('/api/v1/export/replenish-records/?file_format=csv')
+            )
+            assert 'TRANSFER-TAKE-EXPORT' in take_csv
+            assert 'TRANSFER-REPLENISH-EXPORT' in replenish_csv
 
-        client.force_authenticate(user=manager_a)
-        old_take = response_text(client.get('/api/v1/export/take-records/?file_format=csv'))
-        old_replenish = response_text(client.get('/api/v1/export/replenish-records/?file_format=csv'))
-        assert 'TRANSFER-TAKE-EXPORT' not in old_take
-        assert 'TRANSFER-REPLENISH-EXPORT' not in old_replenish
-
-    def test_only_new_owner_can_operate_stock_after_transfer(
+    def test_all_item_managers_can_operate_stock_after_owner_transfer(
         self, manager_a, manager_b, taker, inventory
     ):
         item, _, loc_b = inventory
@@ -148,18 +138,18 @@ class TestOwnershipTransferLedgerScope:
 
         client = APIClient()
         client.force_authenticate(user=manager_a)
-        denied = client.post(f'/api/v1/items/{item.id}/take/', {
+        first = client.post(f'/api/v1/items/{item.id}/take/', {
             'taker': taker.id, 'quantity': 1,
         }, format='json')
-        assert denied.status_code == status.HTTP_404_NOT_FOUND
+        assert first.status_code == status.HTTP_201_CREATED
 
         client.force_authenticate(user=manager_b)
-        allowed = client.post(f'/api/v1/items/{item.id}/take/', {
+        second = client.post(f'/api/v1/items/{item.id}/take/', {
             'taker': taker.id, 'quantity': 1,
         }, format='json')
-        assert allowed.status_code == status.HTTP_201_CREATED
+        assert second.status_code == status.HTTP_201_CREATED
         item.refresh_from_db()
-        assert item.quantity == 9
+        assert item.quantity == 8
 
 
 @pytest.mark.django_db
@@ -173,12 +163,9 @@ class TestConsumableQuantityUpperBound:
         item.save(update_fields=['quantity', 'status'])
         client = APIClient()
         client.force_authenticate(user=manager_a)
-
         response = client.post(f'/api/v1/items/{item.id}/replenish/', {
-            'quantity': 1,
-            'notes': 'must not overflow',
+            'quantity': 1, 'notes': 'must not overflow',
         }, format='json')
-
         assert response.status_code == status.HTTP_409_CONFLICT
         assert response.data['code'] == 'QUANTITY_OVERFLOW'
         item.refresh_from_db()
@@ -193,12 +180,9 @@ class TestConsumableQuantityUpperBound:
         item.save(update_fields=['quantity'])
         client = APIClient()
         client.force_authenticate(user=manager_a)
-
         response = client.post(f'/api/v1/items/{item.id}/replenish/', {
-            'quantity': 5,
-            'notes': 'reach exact max',
+            'quantity': 5, 'notes': 'reach exact max',
         }, format='json')
-
         assert response.status_code == status.HTTP_201_CREATED
         item.refresh_from_db()
         assert item.quantity == MAX_DB_QUANTITY

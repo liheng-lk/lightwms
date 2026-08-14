@@ -1,4 +1,4 @@
-"""Write-scope tests for manager-owned locations."""
+"""Write-scope tests for global inventory-manager locations."""
 
 import pytest
 from rest_framework import status
@@ -44,20 +44,20 @@ def other_location(db, warehouse, other_manager):
 
 @pytest.mark.django_db
 class TestManagerLocationWriteScope:
-    def test_manager_cannot_patch_other_managers_location(
+    def test_manager_can_patch_other_managers_location(
         self, api_client, manager, other_location
     ):
         api_client.force_authenticate(user=manager)
         response = api_client.patch(
             f'/api/v1/locations/{other_location.id}/',
-            {'name': 'Hijacked'},
+            {'name': 'Managed Globally'},
             format='json',
         )
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_200_OK
         other_location.refresh_from_db()
-        assert other_location.name == 'Other Location'
+        assert other_location.name == 'Managed Globally'
 
-    def test_manager_cannot_reassign_other_managers_location_to_self(
+    def test_manager_can_reassign_other_managers_location_to_self(
         self, api_client, manager, other_location
     ):
         api_client.force_authenticate(user=manager)
@@ -66,15 +66,15 @@ class TestManagerLocationWriteScope:
             {'owner': manager.id},
             format='json',
         )
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_200_OK
         other_location.refresh_from_db()
-        assert other_location.owner_id != manager.id
+        assert other_location.owner_id == manager.id
 
-    def test_manager_cannot_deactivate_other_managers_location(
+    def test_manager_can_deactivate_other_managers_location(
         self, api_client, manager, other_location
     ):
         api_client.force_authenticate(user=manager)
         response = api_client.post(f'/api/v1/locations/{other_location.id}/deactivate/')
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_200_OK
         other_location.refresh_from_db()
-        assert other_location.is_active is True
+        assert other_location.is_active is False

@@ -136,6 +136,17 @@ class TestInventoryBoundary:
         response = api_client.get('/api/v1/items/')
         assert response.status_code == 200
 
+    def test_manager_lists_inventory_across_owners(
+        self, api_client, manager, manager_item, other_manager_item
+    ):
+        api_client.force_authenticate(user=manager)
+        response = api_client.get('/api/v1/items/', {'page_size': 100})
+        assert response.status_code == 200
+        rows = response.data.get('results', response.data)
+        ids = {row['id'] for row in rows}
+        assert manager_item.id in ids
+        assert other_manager_item.id in ids
+
     def test_ordinary_user_cannot_create_inventory(self, api_client, ordinary_user, location):
         api_client.force_authenticate(user=ordinary_user)
         response = api_client.post(
@@ -151,16 +162,18 @@ class TestInventoryBoundary:
         )
         assert response.status_code == 403
 
-    def test_manager_cannot_update_another_managers_item(
+    def test_manager_can_update_another_managers_item(
         self, api_client, manager, other_manager_item
     ):
         api_client.force_authenticate(user=manager)
         response = api_client.patch(
             f'/api/v1/items/{other_manager_item.id}/',
-            {'name': 'Should Not Change'},
+            {'name': 'Globally Managed'},
             format='json',
         )
-        assert response.status_code == 404
+        assert response.status_code == 200
+        other_manager_item.refresh_from_db()
+        assert other_manager_item.name == 'Globally Managed'
 
 
 @pytest.mark.django_db
@@ -193,7 +206,7 @@ class TestOperationBoundary:
         )
         assert response.status_code == 201
 
-    def test_manager_cannot_borrow_other_managers_item(
+    def test_manager_can_borrow_other_managers_item(
         self, api_client, manager, ordinary_user, other_manager_item
     ):
         api_client.force_authenticate(user=manager)
@@ -205,7 +218,7 @@ class TestOperationBoundary:
             },
             format='json',
         )
-        assert response.status_code == 404
+        assert response.status_code == 201
 
     def test_borrower_can_return_own_borrow(
         self, api_client, manager, ordinary_user, manager_item

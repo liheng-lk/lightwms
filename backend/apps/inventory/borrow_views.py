@@ -4,8 +4,6 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from core.role_utils import is_item_manager
-
 from .borrow_serializers import BorrowAwareBarcodeSerializer, BorrowAwareItemSerializer
 from .models import Item
 from .permission_views import ItemDetailView as BaseItemDetailView
@@ -39,12 +37,6 @@ class ItemByBarcodeView(APIView):
                 .get(barcode=barcode, is_active=True)
             )
         except Item.DoesNotExist:
-            return Response(
-                {'code': 'NOT_FOUND', 'message': 'Item not found.', 'details': None},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        if is_item_manager(request.user) and item.owner_id != request.user.id:
             return Response(
                 {'code': 'NOT_FOUND', 'message': 'Item not found.', 'details': None},
                 status=status.HTTP_404_NOT_FOUND,

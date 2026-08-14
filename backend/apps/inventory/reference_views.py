@@ -5,7 +5,7 @@ from rest_framework.response import Response
 
 from apps.users.models import User, UserRole
 from core.pagination import StandardPagination
-from core.role_utils import is_item_manager, is_super_admin
+from core.role_utils import is_super_admin
 
 from .models import Category, Location, Warehouse
 from .serializers import LocationSerializer
@@ -35,13 +35,6 @@ def _not_found(resource: str):
     return Response(
         {'code': 'NOT_FOUND', 'message': f'{resource} not found.', 'details': None},
         status=status.HTTP_404_NOT_FOUND,
-    )
-
-
-def _forbidden(message='Permission denied.'):
-    return Response(
-        {'code': 'PERMISSION_DENIED', 'message': message, 'details': None},
-        status=status.HTTP_403_FORBIDDEN,
     )
 
 
@@ -80,16 +73,6 @@ def _validate_location_owner(request, raw_owner_id):
                 'details': {'owner_id': owner.id, 'role': owner.role},
             },
             status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    if is_item_manager(request.user) and owner.id != request.user.id:
-        return Response(
-            {
-                'code': 'PERMISSION_DENIED',
-                'message': 'Item managers can only assign locations to themselves.',
-                'details': {'owner_id': owner.id},
-            },
-            status=status.HTTP_403_FORBIDDEN,
         )
 
     return None
@@ -270,9 +253,6 @@ class LocationDetailView(BaseLocationDetailView):
         if not location:
             return _not_found('Location')
 
-        if is_item_manager(request.user) and location.owner_id != request.user.id:
-            return _forbidden('Item managers can only modify their own locations.')
-
         if 'owner' in request.data:
             owner_error = _validate_location_owner(request, request.data.get('owner'))
             if owner_error:
@@ -291,8 +271,6 @@ class LocationDeactivateView(BaseLocationDeactivateView):
         if not is_super_admin(request.user):
             if not location.is_active or not location.warehouse.is_active:
                 return _not_found('Location')
-        if is_item_manager(request.user) and location.owner_id != request.user.id:
-            return _forbidden('Item managers can only deactivate their own locations.')
 
         return super().post(request, pk)
 

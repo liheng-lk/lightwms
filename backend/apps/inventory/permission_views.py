@@ -1,8 +1,9 @@
 """Permission-hardened inventory views.
 
-These wrappers keep the existing business behavior while centralising role and
-owner checks. They intentionally return 404 for another manager's item so the
-API does not disclose object existence across manager scopes.
+Item Manager is a global inventory-business role. Item ``owner`` remains useful
+responsibility metadata, but it must not isolate otherwise active inventory from
+an Item Manager. Super Admin retains the extra maintenance capabilities such as
+viewing inactive inventory and reassigning owners in bulk.
 """
 from decimal import Decimal, InvalidOperation
 
@@ -14,7 +15,7 @@ from rest_framework import status
 from apps.users.models import User, UserRole
 from core.exceptions import BusinessConflictError
 from core.permissions import IsItemManagerOrSuperAdmin, IsSuperAdmin
-from core.role_utils import is_super_admin, is_item_manager, can_manage_item
+from core.role_utils import is_super_admin, can_manage_item
 
 from .models import Item, ItemStatus, ItemType
 from .serializers import ItemSerializer
@@ -76,12 +77,6 @@ def _validate_requested_owner(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    if is_item_manager(request.user) and owner.id != request.user.id:
-        return Response(
-            {'code': 'PERMISSION_DENIED', 'message': 'Permission denied.', 'details': None},
-            status=status.HTTP_403_FORBIDDEN,
-        )
-
     return None
 
 
@@ -95,8 +90,8 @@ def _normalise_item_ids(raw_ids):
         return None
 
 
-def _preflight_owned_items(request, item_ids, *, active_only=False):
-    """Resolve an entire batch and reject missing/cross-owner items up front."""
+def _preflight_items(request, item_ids, *, active_only=False):
+    """Resolve the entire batch before mutation and reject missing items."""
     qs = Item.objects.filter(id__in=item_ids)
     if active_only:
         qs = qs.filter(is_active=True)
@@ -113,18 +108,6 @@ def _preflight_owned_items(request, item_ids, *, active_only=False):
             },
             status=status.HTTP_404_NOT_FOUND,
         )
-
-    if is_item_manager(request.user):
-        forbidden = [item.id for item in items if item.owner_id != request.user.id]
-        if forbidden:
-            return None, Response(
-                {
-                    'code': 'PERMISSION_DENIED',
-                    'message': 'Permission denied for one or more items.',
-                    'details': {'item_ids': forbidden},
-                },
-                status=status.HTTP_403_FORBIDDEN,
-            )
 
     return items, None
 
@@ -146,9 +129,6 @@ class ItemListCreateView(BaseItemListCreateView):
         else:
             qs = ItemService.list_active()
 
-        if is_item_manager(user):
-            qs = qs.filter(owner_id=user.id)
-
         return qs.prefetch_related('images')
 
     def post(self, request):
@@ -158,8 +138,8 @@ class ItemListCreateView(BaseItemListCreateView):
         return super().post(request)
 
 
-class _OwnedItemMixin:
-    """Apply detail visibility consistently with list/search visibility."""
+class _VisibleItemMixin:
+    """Hide inactive maintenance records outside Super Admin."""
 
     def get_object(self, pk, user):
         try:
@@ -171,12 +151,10 @@ class _OwnedItemMixin:
 
         if not item.is_active and not is_super_admin(user):
             return None
-        if is_item_manager(user) and item.owner_id != user.id:
-            return None
         return item
 
 
-class ItemDetailView(_OwnedItemMixin, BaseItemDetailView):
+class ItemDetailView(_VisibleItemMixin, BaseItemDetailView):
     def get_permissions(self):
         if self.request.method in ('PATCH', 'PUT', 'DELETE'):
             return [IsItemManagerOrSuperAdmin()]
@@ -287,7 +265,7 @@ class ItemGenerateBarcodeView(BaseItemGenerateBarcodeView):
 
 
 class _VisibleImageItemMixin:
-    """Apply the same inactive/owner visibility rules to image subresources."""
+    """Apply inactive visibility rules to image subresources."""
 
     def get_item(self, pk, user):
         try:
@@ -295,8 +273,6 @@ class _VisibleImageItemMixin:
         except Item.DoesNotExist:
             return None
         if not item.is_active and not is_super_admin(user):
-            return None
-        if is_item_manager(user) and item.owner_id != user.id:
             return None
         return item
 
@@ -388,7 +364,7 @@ class ItemBatchDeleteView(BaseItemBatchDeleteView):
 
         try:
             with transaction.atomic():
-                _, preflight_error = _preflight_owned_items(request, item_ids)
+                _, preflight_error = _preflight_items(request, item_ids)
                 if preflight_error:
                     transaction.set_rollback(True)
                     return preflight_error
@@ -421,7 +397,7 @@ class ItemBatchUpdateLocationView(BaseItemBatchUpdateLocationView):
             )
 
         with transaction.atomic():
-            _, preflight_error = _preflight_owned_items(
+            _, preflight_error = _preflight_items(
                 request, item_ids, active_only=True
             )
             if preflight_error:
@@ -443,7 +419,7 @@ class ItemBatchUpdateOwnerView(BaseItemBatchUpdateOwnerView):
             )
 
         with transaction.atomic():
-            _, preflight_error = _preflight_owned_items(
+            _, preflight_error = _preflight_items(
                 request, item_ids, active_only=True
             )
             if preflight_error:

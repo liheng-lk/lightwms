@@ -41,14 +41,16 @@ class IsAuthenticatedInventoryAccess(BasePermission):
 
 
 class IsItemOwner(BasePermission):
-    """Item owner or Super Admin."""
+    """Inventory management access for Item Manager or Super Admin.
+
+    The historic class name is retained for compatibility, but Item ownership
+    is responsibility metadata rather than a role authorization boundary.
+    """
 
     def has_object_permission(self, request, view, obj):
         if not getattr(request.user, 'is_authenticated', False):
             return False
-        if is_super_admin(request.user):
-            return True
-        return is_item_manager(request.user) and getattr(obj, 'owner_id', None) == request.user.id
+        return is_super_admin(request.user) or is_item_manager(request.user)
 
 
 class IsReadOnly(BasePermission):
@@ -58,8 +60,8 @@ class IsReadOnly(BasePermission):
 
 class CanBorrowReturn(BasePermission):
     """
-    Borrow: item owner or Super Admin.
-    Return: item owner, Super Admin, or the current borrower.
+    Borrow: Item Manager or Super Admin.
+    Return: Item Manager, Super Admin, or the current borrower.
     """
 
     def has_object_permission(self, request, view, obj):
@@ -67,10 +69,7 @@ class CanBorrowReturn(BasePermission):
             return False
 
         user = request.user
-        if is_super_admin(user):
-            return True
-
-        if is_item_manager(user) and getattr(obj, 'owner_id', None) == user.id:
+        if is_super_admin(user) or is_item_manager(user):
             return True
 
         if getattr(view, 'action', None) == 'return_item':

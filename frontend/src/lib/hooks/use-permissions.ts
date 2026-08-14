@@ -1,29 +1,36 @@
 'use client';
+
+import { canAdministerSystem, canManageInventory } from '@/lib/permissions';
 import { useAuth } from '@/providers/auth-provider';
 
-type OwnedResource = { owner_id?: number | null; owner?: number | { id?: number | null } | null } | null | undefined;
-function ownerId(resource: OwnedResource): number | null {
-  if (!resource) return null;
-  if (typeof resource.owner_id === 'number') return resource.owner_id;
-  if (typeof resource.owner === 'number') return resource.owner;
-  if (resource.owner && typeof resource.owner === 'object' && typeof resource.owner.id === 'number') return resource.owner.id;
-  return null;
-}
+/** Frontend mirror of the backend role contract. */
 export function usePermissions() {
   const { user } = useAuth();
-  const isSuperAdmin = user?.role === 'super_admin';
-  const isItemManager = user?.role === 'item_manager';
-  const isReadOnlyUser = user?.role === 'read_only_user';
-  const canManage = isSuperAdmin || isItemManager;
-  const scopedManagerAccess = (resource?: OwnedResource) => isSuperAdmin || (isItemManager && (ownerId(resource) === null || ownerId(resource) === user?.id));
+  const role = user?.role;
+
+  const isSuperAdmin = role === 'super_admin';
+  const isItemManager = role === 'item_manager';
+  const isReadOnlyUser = role === 'read_only_user';
+  const canManage = canManageInventory(role);
+
+  // Existing component call sites may pass a resource, but owner metadata is
+  // intentionally ignored: Item Manager is inventory-wide.
   const canCreate = () => canManage;
-  const canEdit = scopedManagerAccess;
-  const canOperate = scopedManagerAccess;
-  const canDelete = (resource?: OwnedResource) => isSuperAdmin || (isItemManager && !!resource && ownerId(resource) === user?.id);
-  const canViewAuditLogs = () => canManage;
+  const canEdit = (_resource?: unknown) => canManage;
+  const canOperate = (_resource?: unknown) => canManage;
+  const canDelete = (_resource?: unknown) => canManage;
+  const canViewAuditLogs = () => canAdministerSystem(role);
+
   return {
-    isSuperAdmin, isItemManager, isReadOnlyUser, canManage,
-    canCreate, canEdit, canOperate, canDelete, canViewAuditLogs,
+    isSuperAdmin,
+    isItemManager,
+    isReadOnlyUser,
+    canManage,
+    canCreate,
+    canEdit,
+    canOperate,
+    canDelete,
+    canViewAuditLogs,
     canBorrow: () => canManage,
     canTake: () => canManage,
   };

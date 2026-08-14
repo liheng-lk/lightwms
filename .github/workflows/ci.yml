@@ -118,6 +118,8 @@ jobs:
           test -f src/lib/utils.ts || (echo "ERROR: frontend/src/lib/utils.ts is missing." && exit 1)
       - name: Install frontend dependencies
         run: npm ci --legacy-peer-deps
+      - name: Verify frontend permission contract
+        run: npm run test:permissions
       - name: Type-check frontend
         run: npx tsc --noEmit --pretty false
       - name: Build frontend

@@ -117,21 +117,19 @@ class SearchService:
         user_is_super_admin = is_super_admin(user)
         user_is_item_manager = is_item_manager(user)
 
-        # Only super admins can include inactive inventory.
+        # Inactive inventory is maintenance data and remains Super Admin only.
         if not include_inactive or not user_is_super_admin:
             qs = qs.filter(is_active=True)
 
-        # Item managers are isolated to their responsibility scope. Ordinary
-        # users can search all active stock because search is read-only.
-        if user_is_item_manager:
-            qs = qs.filter(owner_id=user.id)
-
+        # Item Manager is a global inventory-business role. ``owner`` is
+        # responsibility metadata and can be used as a filter, not visibility
+        # isolation. Ordinary users can also search all active stock read-only.
         if filters:
             if filters.category_id is not None:
                 qs = qs.filter(category_id=filters.category_id)
             if filters.location_id is not None:
                 qs = qs.filter(location_id=filters.location_id)
-            if filters.owner_id is not None and user_is_super_admin:
+            if filters.owner_id is not None and (user_is_super_admin or user_is_item_manager):
                 qs = qs.filter(owner_id=filters.owner_id)
             if filters.status:
                 qs = qs.filter(status=filters.status)

@@ -183,7 +183,7 @@ class TestLocationHierarchyAndOwnerRules:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert not Location.objects.filter(code='REF-BAD-OWNER').exists()
 
-    def test_manager_cannot_assign_new_location_to_another_manager(
+    def test_manager_can_assign_new_location_to_another_manager(
         self, api_client, manager, other_manager, warehouse
     ):
         api_client.force_authenticate(user=manager)
@@ -193,8 +193,9 @@ class TestLocationHierarchyAndOwnerRules:
             'name': 'Cross Owner',
             'owner': other_manager.id,
         }, format='json')
-        assert response.status_code == status.HTTP_403_FORBIDDEN
-        assert not Location.objects.filter(code='REF-CROSS-OWNER').exists()
+        assert response.status_code == status.HTTP_201_CREATED
+        location = Location.objects.get(code='REF-CROSS-OWNER')
+        assert location.owner_id == other_manager.id
 
     def test_manager_cannot_reassign_location_to_ordinary_user(
         self, api_client, manager, ordinary, warehouse

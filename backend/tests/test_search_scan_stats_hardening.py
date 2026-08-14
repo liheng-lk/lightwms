@@ -2,7 +2,6 @@
 from datetime import timedelta
 
 import pytest
-from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -116,9 +115,7 @@ class TestSearchInputContract:
     def test_non_integer_id_filters_return_400_not_500(self, admin, field, value):
         client = APIClient()
         client.force_authenticate(user=admin)
-
         response = client.get('/api/v1/search/', {field: value})
-
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert response.data['code'] == 'VALIDATION_ERROR'
 
@@ -129,18 +126,14 @@ class TestSearchInputContract:
     def test_invalid_choice_filters_return_400(self, admin, field, value):
         client = APIClient()
         client.force_authenticate(user=admin)
-
         response = client.get('/api/v1/search/', {field: value})
-
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert response.data['code'] == 'VALIDATION_ERROR'
 
     def test_keyword_longer_than_contract_is_rejected_not_silently_truncated(self, admin):
         client = APIClient()
         client.force_authenticate(user=admin)
-
         response = client.get('/api/v1/search/', {'keyword': 'x' * 101})
-
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert response.data['code'] == 'VALIDATION_ERROR'
 
@@ -156,9 +149,7 @@ class TestSearchInputContract:
         ])
         client = APIClient()
         client.force_authenticate(user=admin)
-
         response = client.get('/api/v1/search/', {'page_size': 1000})
-
         assert response.status_code == status.HTTP_200_OK
         assert response.data['count'] == 105
         assert len(response.data['results']) == 100
@@ -172,9 +163,7 @@ class TestBorrowPrivacyAcrossReadEntrypoints:
     ):
         client = APIClient()
         client.force_authenticate(user=ordinary_viewer)
-
         response = client.get(path, {'keyword': 'SEARCH-SHARED-001', 'page_size': 100})
-
         assert response.status_code == status.HTTP_200_OK
         row = get_one_result(response, multi_borrow_item.id)
         assert row['current_borrower'] is None
@@ -187,9 +176,7 @@ class TestBorrowPrivacyAcrossReadEntrypoints:
     ):
         client = APIClient()
         client.force_authenticate(user=borrower_a)
-
         response = client.get(path, {'keyword': 'SEARCH-SHARED-001', 'page_size': 100})
-
         assert response.status_code == status.HTTP_200_OK
         row = get_one_result(response, multi_borrow_item.id)
         assert row['current_borrower'] == borrower_a.username
@@ -198,14 +185,12 @@ class TestBorrowPrivacyAcrossReadEntrypoints:
         assert row['active_borrows'][0]['borrower'] == borrower_a.id
 
     @pytest.mark.parametrize('path', ['/api/v1/items/', '/api/v1/search/'])
-    def test_owner_manager_sees_all_active_records_without_fake_singular_borrower(
+    def test_manager_sees_all_active_records_without_fake_singular_borrower(
         self, manager_a, multi_borrow_item, path,
     ):
         client = APIClient()
         client.force_authenticate(user=manager_a)
-
         response = client.get(path, {'keyword': 'SEARCH-SHARED-001', 'page_size': 100})
-
         assert response.status_code == status.HTTP_200_OK
         row = get_one_result(response, multi_borrow_item.id)
         assert row['current_borrower'] is None
@@ -217,9 +202,7 @@ class TestBorrowPrivacyAcrossReadEntrypoints:
     ):
         client = APIClient()
         client.force_authenticate(user=ordinary_viewer)
-
         response = client.get(f'/api/v1/items/by-barcode/{multi_borrow_item.barcode}/')
-
         assert response.status_code == status.HTTP_200_OK
         assert response.data['active_borrows'] == []
         assert response.data['borrowed_quantity'] == 2
@@ -228,7 +211,7 @@ class TestBorrowPrivacyAcrossReadEntrypoints:
 
 @pytest.mark.django_db
 class TestRoleScopedDashboardCounts:
-    def test_manager_dashboard_source_counts_do_not_include_other_manager_scope(
+    def test_manager_dashboard_counts_are_inventory_wide(
         self, manager_a, manager_b, locations, borrower_a, borrower_b,
     ):
         loc_a, loc_b = locations
@@ -281,9 +264,9 @@ class TestRoleScopedDashboardCounts:
         assert item_response.status_code == status.HTTP_200_OK
         assert borrow_response.status_code == status.HTTP_200_OK
         assert take_response.status_code == status.HTTP_200_OK
-        assert item_response.data['count'] == 2
-        assert borrow_response.data['count'] == 1
-        assert take_response.data['count'] == 1
+        assert item_response.data['count'] == 4
+        assert borrow_response.data['count'] == 2
+        assert take_response.data['count'] == 2
 
     def test_ordinary_dashboard_borrow_and_take_counts_are_self_only(
         self, ordinary_viewer, borrower_a, manager_a, locations,

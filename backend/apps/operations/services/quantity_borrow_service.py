@@ -9,7 +9,7 @@ from apps.inventory.models import Item, ItemStatus, ItemType
 from apps.operations.models import BorrowRecord, BorrowStatus
 from apps.users.models import User
 from core.exceptions import BusinessConflictError
-from core.role_utils import is_super_admin
+from core.role_utils import is_item_manager, is_super_admin
 
 from .borrow_service import BorrowService
 
@@ -141,8 +141,7 @@ class QuantityBorrowService(BorrowService):
         operator: User,
         borrow_record_id: Optional[int],
     ) -> BorrowRecord:
-        is_admin = is_super_admin(operator)
-        is_owner = item.owner_id == operator.id
+        can_manage_returns = is_super_admin(operator) or is_item_manager(operator)
 
         if borrow_record_id is not None:
             record = next(
@@ -155,7 +154,7 @@ class QuantityBorrowService(BorrowService):
                     message='The selected borrow record is not active for this item.',
                     details={'borrow_record_id': borrow_record_id, 'item_id': item.id},
                 )
-            if not (is_admin or is_owner or record.borrower_id == operator.id):
+            if not (can_manage_returns or record.borrower_id == operator.id):
                 raise BusinessConflictError(
                     code='PERMISSION_DENIED',
                     message='You cannot return another user\'s borrow record.',
@@ -163,7 +162,7 @@ class QuantityBorrowService(BorrowService):
                 )
             return record
 
-        if is_admin or is_owner:
+        if can_manage_returns:
             if len(active_records) == 1:
                 return active_records[0]
             raise BusinessConflictError(
@@ -192,7 +191,7 @@ class QuantityBorrowService(BorrowService):
             )
         raise BusinessConflictError(
             code='PERMISSION_DENIED',
-            message='Only the responsible manager, super admin, or borrower can return this item.',
+            message='Only an inventory manager, super admin, or borrower can return this item.',
             details={'item_id': item.id},
         )
 
@@ -224,8 +223,7 @@ class QuantityBorrowService(BorrowService):
             borrow_record_id=borrow_record_id,
         )
 
-        is_admin = is_super_admin(operator)
-        is_owner = item.owner_id == operator.id
+        can_manage_returns = is_super_admin(operator) or is_item_manager(operator)
         is_borrower = record.borrower_id == operator.id
         item_before = cls._get_item_audit_data(item)
         record_before = cls._get_borrow_audit_data(record)
@@ -233,7 +231,7 @@ class QuantityBorrowService(BorrowService):
         record.actual_return_datetime = timezone.now()
         record.return_notes = return_notes
         record.status = BorrowStatus.RETURNED
-        if is_admin or is_owner:
+        if can_manage_returns:
             record.condition = condition
         record.save(update_fields=[
             'actual_return_datetime',
@@ -248,7 +246,7 @@ class QuantityBorrowService(BorrowService):
 
         audit_operator_role = (
             'borrower'
-            if is_borrower and not (is_owner or is_admin)
+            if is_borrower and not can_manage_returns
             else getattr(operator, 'role', '')
         )
         AuditLog.objects.create(
