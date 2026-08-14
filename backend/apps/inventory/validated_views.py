@@ -3,6 +3,7 @@ from rest_framework import serializers, status
 from rest_framework.response import Response
 
 from core.pagination import StandardPagination
+from core.role_utils import is_item_manager, is_super_admin
 
 from .permission_views import ItemListCreateView as HardenedItemListCreateView
 from .atomic_views import ItemCreateWithInvoiceView as AtomicItemCreateWithInvoiceView
@@ -86,7 +87,9 @@ class ItemListCreateView(HardenedItemListCreateView):
             queryset = queryset.filter(type=data['type'])
         if data.get('status'):
             queryset = queryset.filter(status=data['status'])
-        if data.get('owner') is not None and getattr(request.user, 'role', None) == 'super_admin':
+        if data.get('owner') is not None and (
+            is_super_admin(request.user) or is_item_manager(request.user)
+        ):
             queryset = queryset.filter(owner_id=data['owner'])
 
         queryset = prefetch_active_borrows(queryset)
