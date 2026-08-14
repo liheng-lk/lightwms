@@ -1,32 +1,25 @@
 'use client';
 
+import { canAdministerSystem, canManageInventory } from '@/lib/permissions';
 import { useAuth } from '@/providers/auth-provider';
 
-/**
- * Frontend mirror of the backend role contract.
- *
- * Item Manager is an inventory-wide business role. `owner` is responsibility
- * metadata/filtering information and must never be used to hide normal
- * inventory actions from an Item Manager.
- */
+/** Frontend mirror of the backend role contract. */
 export function usePermissions() {
   const { user } = useAuth();
+  const role = user?.role;
 
-  const isSuperAdmin = user?.role === 'super_admin';
-  const isItemManager = user?.role === 'item_manager';
-  const isReadOnlyUser = user?.role === 'read_only_user';
-  const canManage = isSuperAdmin || isItemManager;
+  const isSuperAdmin = role === 'super_admin';
+  const isItemManager = role === 'item_manager';
+  const isReadOnlyUser = role === 'read_only_user';
+  const canManage = canManageInventory(role);
 
-  // Keep the optional resource argument for existing component call sites,
-  // but authorization intentionally does not depend on resource.owner.
+  // Existing component call sites may pass a resource, but owner metadata is
+  // intentionally ignored: Item Manager is inventory-wide.
   const canCreate = () => canManage;
   const canEdit = (_resource?: unknown) => canManage;
   const canOperate = (_resource?: unknown) => canManage;
   const canDelete = (_resource?: unknown) => canManage;
-
-  // Audit logs are a system-administration capability in the current role
-  // matrix and are exposed in navigation to Super Admin only.
-  const canViewAuditLogs = () => isSuperAdmin;
+  const canViewAuditLogs = () => canAdministerSystem(role);
 
   return {
     isSuperAdmin,
