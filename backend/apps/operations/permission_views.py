@@ -9,9 +9,9 @@ from apps.inventory.models import Item
 from core.exceptions import BusinessConflictError
 from core.pagination import StandardPagination
 from core.permissions import IsItemManagerOrSuperAdmin
-from core.role_utils import is_super_admin, is_item_manager, is_read_only_user
+from core.role_utils import is_read_only_user
 
-from .models import BorrowRecord, BorrowStatus
+from .models import BorrowStatus
 from .serializers import (
     BorrowRecordSerializer,
     BorrowRequestSerializer,
@@ -33,14 +33,13 @@ from .views import (
 )
 
 
-def _owned_item(pk, user):
+def _managed_item(pk):
     try:
-        item = Item.objects.select_related('owner', 'location', 'location__warehouse').get(pk=pk)
+        return Item.objects.select_related(
+            'owner', 'location', 'location__warehouse'
+        ).get(pk=pk)
     except Item.DoesNotExist:
         return None
-    if is_item_manager(user) and item.owner_id != user.id:
-        return None
-    return item
 
 
 def _parse_date(value):
@@ -53,11 +52,11 @@ def _parse_date(value):
 
 
 class ItemBorrowView(BaseItemBorrowView):
-    """Only the responsible manager or super admin can register a borrow."""
+    """Item Managers and Super Admins can register borrows for any inventory."""
     permission_classes = [IsItemManagerOrSuperAdmin]
 
     def get_object(self, pk, user):
-        return _owned_item(pk, user)
+        return _managed_item(pk)
 
     def post(self, request, pk):
         item = self.get_object(pk, request.user)
@@ -93,21 +92,12 @@ class ItemBorrowView(BaseItemBorrowView):
 
 
 class ItemReturnView(BaseItemReturnView):
-    """Return one precise active borrow record while retaining legacy fallback."""
+    """Return one precise active borrow record while retaining self-return."""
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
-        try:
-            item = Item.objects.select_related('owner', 'location', 'location__warehouse').get(pk=pk)
-        except Item.DoesNotExist:
-            return Response(
-                {'code': 'NOT_FOUND', 'message': 'Item not found.', 'details': None},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        # Managers must stay inside their inventory scope. Borrowers are allowed
-        # to reach this point because the service resolves only their own record.
-        if is_item_manager(request.user) and item.owner_id != request.user.id:
+        item = _managed_item(pk)
+        if item is None:
             return Response(
                 {'code': 'NOT_FOUND', 'message': 'Item not found.', 'details': None},
                 status=status.HTTP_404_NOT_FOUND,
@@ -147,7 +137,7 @@ class ItemReturnView(BaseItemReturnView):
 
 
 class BorrowRecordListView(BaseBorrowRecordListView):
-    """Admin: all; manager: owned items; ordinary user: own borrows."""
+    """Admin/manager: all records; ordinary user: own borrows."""
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
@@ -155,7 +145,6 @@ class BorrowRecordListView(BaseBorrowRecordListView):
         borrower_id = request.query_params.get('borrower')
         status_filter = request.query_params.get('status')
 
-        owner_id = request.user.id if is_item_manager(request.user) else None
         visible_borrower_id = request.user.id if is_read_only_user(request.user) else None
         if is_read_only_user(request.user):
             borrower_id = request.user.id
@@ -164,7 +153,7 @@ class BorrowRecordListView(BaseBorrowRecordListView):
             item_id=int(item_id) if item_id else None,
             borrower_id=int(borrower_id) if borrower_id else None,
             status=status_filter,
-            owner_id=owner_id,
+            owner_id=None,
             visible_borrower_id=visible_borrower_id,
             start_date=_parse_date(request.query_params.get('start_date')),
             end_date=_parse_date(request.query_params.get('end_date')),
@@ -185,24 +174,23 @@ class ItemTakeView(BaseItemTakeView):
     permission_classes = [IsItemManagerOrSuperAdmin]
 
     def get_object(self, pk, user):
-        return _owned_item(pk, user)
+        return _managed_item(pk)
 
 
 class ItemReplenishView(BaseItemReplenishView):
     permission_classes = [IsItemManagerOrSuperAdmin]
 
     def get_object(self, pk, user):
-        return _owned_item(pk, user)
+        return _managed_item(pk)
 
 
 class TakeRecordListView(BaseTakeRecordListView):
-    """Admin: all; manager: owned items; ordinary user: own takes."""
+    """Admin/manager: all records; ordinary user: own takes."""
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         item_id = request.query_params.get('item')
         taker_id = request.query_params.get('taker')
-        owner_id = request.user.id if is_item_manager(request.user) else None
         visible_taker_id = request.user.id if is_read_only_user(request.user) else None
         if is_read_only_user(request.user):
             taker_id = request.user.id
@@ -210,7 +198,7 @@ class TakeRecordListView(BaseTakeRecordListView):
         records = ConsumableService.list_take_records(
             item_id=int(item_id) if item_id else None,
             taker_id=int(taker_id) if taker_id else None,
-            owner_id=owner_id,
+            owner_id=None,
             visible_taker_id=visible_taker_id,
             start_date=_parse_date(request.query_params.get('start_date')),
             end_date=_parse_date(request.query_params.get('end_date')),
@@ -229,11 +217,10 @@ class ReplenishRecordListView(BaseReplenishRecordListView):
     def get(self, request):
         item_id = request.query_params.get('item')
         operator_id = request.query_params.get('operator')
-        owner_id = request.user.id if is_item_manager(request.user) else None
         records = ConsumableService.list_replenish_records(
             item_id=int(item_id) if item_id else None,
             operator_id=int(operator_id) if operator_id else None,
-            owner_id=owner_id,
+            owner_id=None,
             visible_operator_id=None,
             start_date=_parse_date(request.query_params.get('start_date')),
             end_date=_parse_date(request.query_params.get('end_date')),
