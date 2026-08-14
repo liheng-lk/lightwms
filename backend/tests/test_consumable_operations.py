@@ -112,13 +112,9 @@ class TestTakeInventoryInvariant:
             sku='CONS-TAKE-EXACT', quantity=5,
         )
         api_client.force_authenticate(user=manager)
-
         response = api_client.post(f'/api/v1/items/{item.id}/take/', {
-            'taker': ordinary.id,
-            'quantity': 5,
-            'notes': 'exact stock take',
+            'taker': ordinary.id, 'quantity': 5, 'notes': 'exact stock take',
         }, format='json')
-
         assert response.status_code == status.HTTP_201_CREATED
         item.refresh_from_db()
         assert item.quantity == 0
@@ -130,10 +126,8 @@ class TestTakeInventoryInvariant:
         assert record.quantity == 5
         assert record.notes == 'exact stock take'
         assert AuditLog.objects.filter(
-            action=AuditAction.TAKE,
-            target_type=TargetType.ITEM,
-            target_id=item.id,
-            operator=manager,
+            action=AuditAction.TAKE, target_type=TargetType.ITEM,
+            target_id=item.id, operator=manager,
         ).exists()
 
     def test_partial_take_keeps_in_stock(
@@ -144,11 +138,9 @@ class TestTakeInventoryInvariant:
             sku='CONS-TAKE-PARTIAL', quantity=5,
         )
         api_client.force_authenticate(user=manager)
-
         response = api_client.post(f'/api/v1/items/{item.id}/take/', {
             'taker': ordinary.id, 'quantity': 2,
         }, format='json')
-
         assert response.status_code == status.HTTP_201_CREATED
         item.refresh_from_db()
         assert item.quantity == 3
@@ -163,11 +155,9 @@ class TestTakeInventoryInvariant:
             sku='CONS-TAKE-OVER', quantity=2,
         )
         api_client.force_authenticate(user=manager)
-
         response = api_client.post(f'/api/v1/items/{item.id}/take/', {
             'taker': ordinary.id, 'quantity': 3,
         }, format='json')
-
         assert response.status_code == status.HTTP_409_CONFLICT
         assert response.data['code'] == 'INSUFFICIENT_QUANTITY'
         item.refresh_from_db()
@@ -222,7 +212,6 @@ class TestReplenishInventoryInvariant:
         response = api_client.post(f'/api/v1/items/{item.id}/replenish/', {
             'quantity': 4, 'notes': 'new shipment',
         }, format='json')
-
         assert response.status_code == status.HTTP_201_CREATED
         item.refresh_from_db()
         assert item.quantity == 4
@@ -233,10 +222,8 @@ class TestReplenishInventoryInvariant:
         assert record.quantity == 4
         assert record.notes == 'new shipment'
         assert AuditLog.objects.filter(
-            action=AuditAction.REPLENISH,
-            target_type=TargetType.ITEM,
-            target_id=item.id,
-            operator=manager,
+            action=AuditAction.REPLENISH, target_type=TargetType.ITEM,
+            target_id=item.id, operator=manager,
         ).exists()
 
     def test_zero_quantity_replenish_is_rejected_before_mutation(
@@ -278,13 +265,13 @@ class TestConsumableOperationPermissions:
         item.refresh_from_db()
         assert item.quantity == 3
 
-    @pytest.mark.parametrize('operation,payload_factory', [
-        ('take', lambda ordinary: {'taker': ordinary.id, 'quantity': 1}),
-        ('replenish', lambda ordinary: {'quantity': 1}),
+    @pytest.mark.parametrize('operation,payload_factory,expected_quantity', [
+        ('take', lambda ordinary: {'taker': ordinary.id, 'quantity': 1}, 2),
+        ('replenish', lambda ordinary: {'quantity': 1}, 4),
     ])
-    def test_manager_cannot_mutate_other_managers_stock(
+    def test_manager_can_mutate_other_managers_stock(
         self, api_client, manager, other_manager, ordinary,
-        other_location, operation, payload_factory
+        other_location, operation, payload_factory, expected_quantity
     ):
         item = make_consumable(
             owner=other_manager, location=other_location,
@@ -295,9 +282,9 @@ class TestConsumableOperationPermissions:
             f'/api/v1/items/{item.id}/{operation}/',
             payload_factory(ordinary), format='json'
         )
-        assert response.status_code == status.HTTP_404_NOT_FOUND
+        assert response.status_code == status.HTTP_201_CREATED
         item.refresh_from_db()
-        assert item.quantity == 3
+        assert item.quantity == expected_quantity
 
     @pytest.mark.parametrize('operation,payload_factory', [
         ('take', lambda ordinary: {'taker': ordinary.id, 'quantity': 1}),
@@ -364,7 +351,7 @@ class TestConsumableRecordVisibility:
         assert own.id in ids
         assert other.id not in ids
 
-    def test_manager_sees_only_current_owned_item_take_records(
+    def test_manager_sees_inventory_wide_take_records(
         self, api_client, ordinary, manager, other_manager,
         manager_location, other_location
     ):
@@ -386,17 +373,14 @@ class TestConsumableRecordVisibility:
         response = api_client.get('/api/v1/take-records/?page_size=100')
         assert response.status_code == status.HTTP_200_OK
         ids = {row['id'] for row in response.data['results']}
-        assert own.id in ids
-        assert other.id not in ids
+        assert {own.id, other.id}.issubset(ids)
 
-    def test_ordinary_user_cannot_list_replenish_records(
-        self, api_client, ordinary
-    ):
+    def test_ordinary_user_cannot_list_replenish_records(self, api_client, ordinary):
         api_client.force_authenticate(user=ordinary)
         response = api_client.get('/api/v1/replenish-records/')
         assert response.status_code == status.HTTP_403_FORBIDDEN
 
-    def test_manager_sees_only_current_owned_item_replenish_records(
+    def test_manager_sees_inventory_wide_replenish_records(
         self, api_client, manager, other_manager, manager_location, other_location
     ):
         own_item = make_consumable(
@@ -417,5 +401,4 @@ class TestConsumableRecordVisibility:
         response = api_client.get('/api/v1/replenish-records/?page_size=100')
         assert response.status_code == status.HTTP_200_OK
         ids = {row['id'] for row in response.data['results']}
-        assert own.id in ids
-        assert other.id not in ids
+        assert {own.id, other.id}.issubset(ids)
