@@ -3,8 +3,8 @@ URL configuration for invoices app.
 """
 from django.urls import path
 
+from .global_scope_views import InvoiceListCreateView
 from .hardened_views import (
-    InvoiceListCreateView,
     InvoiceDetailView,
     InvoiceBatchStatusUpdateView,
     InvoiceBatchDeleteView,
