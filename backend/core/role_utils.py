@@ -26,11 +26,10 @@ def is_read_only_user(user: Optional[Any]) -> bool:
 
 def can_manage_item(user: Optional[Any], item: Any) -> bool:
     """
-    Super Admin can manage any item; Item Manager can manage only owned items.
+    Super Admin and Item Manager can manage inventory globally.
     Ordinary users never mutate inventory.
+
+    ``item.owner`` is inventory metadata/responsibility information; it is not
+    an authorization boundary for the Item Manager role.
     """
-    if is_super_admin(user):
-        return True
-    if is_item_manager(user):
-        return getattr(item, 'owner_id', None) == getattr(user, 'id', None)
-    return False
+    return is_super_admin(user) or is_item_manager(user)
