@@ -229,6 +229,12 @@ jobs:
           media="$(curl -fsS http://127.0.0.1:3100/media/smoke.txt)"
           test "$media" = 'smoke'
 
+          # Item thumbnails/details use /api/media/* in the browser. Verify the
+          # frontend runtime proxy reaches the same backend media object.
+          api_media="$(curl -fsS http://127.0.0.1:3100/api/media/smoke.txt)"
+          test "$api_media" = 'smoke'
+          curl -fsSI http://127.0.0.1:3100/api/media/smoke.txt | grep -Eiq '^content-type: text/plain'
+
           login_headers="$(curl -sS -D - -o /dev/null \
             -H 'Content-Type: application/json' \
             --data '{"username":"smoke","password":"smoke"}' \
