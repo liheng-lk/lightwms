@@ -98,7 +98,6 @@ class TestCreateQuantityContract:
             'type': 'reusable',
             'quantity': 0,
         }, format='json')
-
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert not Item.objects.filter(sku='OPEDGE-ZERO-REUSE').exists()
 
@@ -110,10 +109,8 @@ class TestBarcodeIdempotence:
     ):
         item = make_item(owner=manager, location=location, sku='OPEDGE-BARCODE-IDEMP')
         api_client.force_authenticate(user=manager)
-
         first = api_client.post(f'/api/v1/items/{item.id}/generate-barcode/')
         second = api_client.post(f'/api/v1/items/{item.id}/generate-barcode/')
-
         assert first.status_code == status.HTTP_200_OK
         assert second.status_code == status.HTTP_200_OK
         assert first.data['barcode'] == second.data['barcode']
@@ -127,29 +124,25 @@ class TestBarcodeIdempotence:
         item.barcode = 'OPEDGE-INACTIVE-BARCODE'
         item.save(update_fields=['barcode'])
         api_client.force_authenticate(user=ordinary)
-
         response = api_client.get('/api/v1/items/by-barcode/OPEDGE-INACTIVE-BARCODE/')
-
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
 @pytest.mark.django_db
 class TestManagerExportScope:
-    def test_item_export_contains_only_managers_owned_items(
+    def test_item_export_contains_inventory_wide_active_items(
         self, api_client, manager, other_manager, location, other_location
     ):
         own = make_item(owner=manager, location=location, sku='OPEDGE-EXPORT-OWN')
         other = make_item(owner=other_manager, location=other_location, sku='OPEDGE-EXPORT-OTHER')
         api_client.force_authenticate(user=manager)
-
         response = api_client.get('/api/v1/items/export/?file_format=csv')
-
         assert response.status_code == status.HTTP_200_OK
         text = response_text(response)
         assert own.sku in text
-        assert other.sku not in text
+        assert other.sku in text
 
-    def test_borrow_export_contains_only_managers_inventory_records(
+    def test_borrow_export_contains_inventory_wide_records(
         self, api_client, manager, other_manager, ordinary, location, other_location
     ):
         own = make_item(owner=manager, location=location, sku='OPEDGE-BORROW-OWN')
@@ -165,13 +158,11 @@ class TestManagerExportScope:
             notes='OTHER_EXPORT_MARKER', status=BorrowStatus.ACTIVE,
         )
         api_client.force_authenticate(user=manager)
-
         response = api_client.get('/api/v1/export/borrow-records/?file_format=csv')
-
         assert response.status_code == status.HTTP_200_OK
         text = response_text(response)
         assert 'OWN_EXPORT_MARKER' in text
-        assert 'OTHER_EXPORT_MARKER' not in text
+        assert 'OTHER_EXPORT_MARKER' in text
 
 
 @pytest.mark.django_db
@@ -185,11 +176,9 @@ class TestBatchLocationTargetSafety:
             owner=manager, is_active=False,
         )
         api_client.force_authenticate(user=manager)
-
         response = api_client.post('/api/v1/items/batch-update-location/', {
             'item_ids': [item.id], 'location_id': inactive.id,
         }, format='json')
-
         assert response.status_code == status.HTTP_409_CONFLICT
         item.refresh_from_db()
         assert item.location_id == location.id
@@ -221,8 +210,6 @@ class TestHardDeleteHistoryProtection:
                 item=item, operator=manager, quantity=1,
             )
         api_client.force_authenticate(user=manager)
-
         response = api_client.delete(f'/api/v1/items/{item.id}/delete/')
-
         assert response.status_code == status.HTTP_409_CONFLICT
         assert Item.objects.filter(id=item.id).exists()
