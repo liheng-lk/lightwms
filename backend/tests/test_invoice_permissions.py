@@ -59,19 +59,21 @@ class TestInvoicePermissionBoundary:
         api_client.force_authenticate(user=ordinary)
         assert api_client.get('/api/v1/invoices/').status_code == 403
 
-    def test_manager_sees_only_own_invoice_scope(self, api_client, manager, other_manager):
+    def test_manager_sees_all_inventory_invoice_scope(self, api_client, manager, other_manager):
         own = make_invoice(manager, 'own')
-        make_invoice(other_manager, 'other')
+        other = make_invoice(other_manager, 'other')
         api_client.force_authenticate(user=manager)
         response = api_client.get('/api/v1/invoices/')
         assert response.status_code == 200
         results = response.data.get('results', response.data)
-        assert [row['id'] for row in results] == [own.id]
+        assert {row['id'] for row in results} == {own.id, other.id}
 
-    def test_manager_cannot_open_other_managers_invoice(self, api_client, manager, other_manager):
-        other = make_invoice(other_manager, 'private')
+    def test_manager_can_open_other_managers_invoice(self, api_client, manager, other_manager):
+        other = make_invoice(other_manager, 'shared')
         api_client.force_authenticate(user=manager)
-        assert api_client.get(f'/api/v1/invoices/{other.id}/').status_code == 404
+        response = api_client.get(f'/api/v1/invoices/{other.id}/')
+        assert response.status_code == 200
+        assert response.data['id'] == other.id
 
     def test_manager_cannot_change_reimbursement_status(self, api_client, manager):
         invoice = make_invoice(manager, 'status')
