@@ -88,6 +88,28 @@ class TestInvoiceZipExportSafety:
                 '采购/invoice_export_admin+办公用品发票+128.50.pdf'
             ]
 
+    def test_exported_filename_sanitizes_unsafe_invoice_name(self, admin):
+        invoice = create_invoice(
+            creator=admin,
+            name='../差旅/发票',
+            category='差旅',
+            amount='88.00',
+            file_path='invoices/2099/01/travel.pdf',
+        )
+        materialize(invoice)
+        client = APIClient()
+        client.force_authenticate(user=admin)
+
+        response = client.post('/api/v1/invoices/export/', {'ids': [invoice.id]}, format='json')
+
+        assert response.status_code == status.HTTP_200_OK
+        with zipfile.ZipFile(io.BytesIO(response.content), 'r') as archive:
+            names = archive.namelist()
+        assert len(names) == 1
+        entry = PurePosixPath(names[0])
+        assert '..' not in entry.parts
+        assert entry.name == 'invoice_export_admin+_差旅_发票+88.00.pdf'
+
     def test_duplicate_export_names_get_numeric_suffix(self, admin):
         first = create_invoice(
             creator=admin,
