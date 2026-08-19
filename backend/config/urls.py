@@ -14,29 +14,57 @@ from apps.operations.urls import item_borrow_urlpatterns, item_consumable_urlpat
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-
+    
+    # Health and version endpoints
     path('api/v1/health/', health_check, name='health-check'),
     path('api/v1/version/', version_check, name='version-check'),
-
+    
+    # Authentication endpoints
     path('api/v1/auth/', include(auth_urlpatterns)),
+    
+    # User endpoints
     path('api/v1/users/', include(user_urlpatterns)),
+    
+    # Invite code endpoints
     path('api/v1/invite-codes/', include(invite_code_urlpatterns)),
+    
+    # Inventory endpoints
     path('api/v1/', include('apps.inventory.urls')),
+    
+    # Operations endpoints (borrow records, take records, replenish records, recent borrowers)
     path('api/v1/', include('apps.operations.urls')),
+    
+    # Item-specific borrow/return endpoints
     path('api/v1/', include(item_borrow_urlpatterns)),
+    
+    # Item-specific take/replenish endpoints
     path('api/v1/', include(item_consumable_urlpatterns)),
+    
+    # Audit endpoints
     path('api/v1/', include('apps.audit.urls')),
+    
+    # Import/Export endpoints
     path('api/v1/', include('apps.imports.urls')),
+    
+    # Invoice endpoints
     path('api/v1/', include('apps.invoices.urls')),
+    
+    # System settings endpoints
     path('api/v1/system-settings/', include('apps.settings.urls')),
-
+    
+    # OpenAPI schema and documentation
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
 ]
 
+# Serve media files in all environments
+# In production, Nginx should handle this, but we also serve from Django as fallback
+# This is safe because media files are user-uploaded content, not sensitive
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 else:
+    # In production, serve media files through Django as fallback
+    # Nginx should be configured to serve /media/ directly for better performance
     urlpatterns += [
         re_path(r'^media/(?P<path>.*)$', serve, {'document_root': settings.MEDIA_ROOT}),
     ]
