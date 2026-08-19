@@ -52,6 +52,9 @@ class User(AbstractUser):
     )
     must_change_password = models.BooleanField(default=False)
     tokens_invalid_before = models.DateTimeField(blank=True, null=True)
+    # Accounts referenced by business history are archived instead of physically
+    # deleted so invoices, ownership and ledgers keep their historical author.
+    deleted_at = models.DateTimeField(blank=True, null=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
