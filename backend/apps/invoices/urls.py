@@ -3,12 +3,15 @@ URL configuration for invoices app.
 """
 from django.urls import path
 
-from .global_scope_views import InvoiceListCreateView
+from .advanced_views import (
+    InvoiceListCreateView,
+    InvoiceExportView,
+    ReimbursementExcelExportView,
+)
 from .hardened_views import (
     InvoiceDetailView,
     InvoiceBatchStatusUpdateView,
     InvoiceBatchDeleteView,
-    InvoiceExportView,
 )
 from .permission_views import (
     InvoiceStatusUpdateView,
@@ -23,6 +26,11 @@ urlpatterns = [
     path('invoices/batch/status/', InvoiceBatchStatusUpdateView.as_view(), name='invoice-batch-status'),
     path('invoices/batch/delete/', InvoiceBatchDeleteView.as_view(), name='invoice-batch-delete'),
     path('invoices/export/', InvoiceExportView.as_view(), name='invoice-export'),
+    path(
+        'invoices/export/reimbursement/',
+        ReimbursementExcelExportView.as_view(),
+        name='invoice-reimbursement-export',
+    ),
     path('invoices/categories/', InvoiceCategoriesView.as_view(), name='invoice-categories'),
     path('invoices/months/', InvoiceMonthsView.as_view(), name='invoice-months'),
 ]
