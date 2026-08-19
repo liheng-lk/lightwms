@@ -15,7 +15,10 @@ class UserRole(models.TextChoices):
 
 
 class UserManager(BaseUserManager):
-    """Custom user manager for User model."""
+    """Custom user manager for active/non-deleted User rows."""
+
+    def get_queryset(self):
+        return super().get_queryset().filter(deleted_at__isnull=True)
 
     def create_user(self, username, password=None, **extra_fields):
         if not username:
@@ -52,10 +55,15 @@ class User(AbstractUser):
     )
     must_change_password = models.BooleanField(default=False)
     tokens_invalid_before = models.DateTimeField(blank=True, null=True)
+    # Accounts referenced by business history are archived instead of physically
+    # deleted so invoices, ownership and ledgers keep their historical author.
+    deleted_at = models.DateTimeField(blank=True, null=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     objects = UserManager()
+    # Explicit escape hatch for maintenance/tests that need archived rows.
+    all_objects = models.Manager()
 
     class Meta:
         db_table = 'users_user'

@@ -46,6 +46,7 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           docker build --pull \
+            --build-arg APP_VERSION="$VERSION" \
             --label org.opencontainers.image.source="https://github.com/${GITHUB_REPOSITORY}" \
             --label org.opencontainers.image.revision="${GITHUB_SHA}" \
             --label org.opencontainers.image.version="$VERSION" \

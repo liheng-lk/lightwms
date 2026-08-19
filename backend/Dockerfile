@@ -26,11 +26,14 @@ RUN pip wheel --no-cache-dir --wheel-dir /app/wheels -r requirements.txt
 # Stage 2: Production stage
 FROM python:3.11-slim-bookworm AS production
 
+ARG APP_VERSION=unknown
+
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     DJANGO_SETTINGS_MODULE=config.settings.production \
-    APP_HOME=/app
+    APP_HOME=/app \
+    APP_VERSION=${APP_VERSION}
 
 WORKDIR $APP_HOME
 

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Plus, Download, ChevronLeft, ChevronRight, X, Trash2 } from 'lucide-react';
+import { Plus, Download, FileSpreadsheet, ChevronLeft, ChevronRight, X, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -30,6 +30,7 @@ import {
   useInvoices,
   useExportInvoices,
   useExportInvoicesByIds,
+  useExportReimbursementExcel,
   useBatchUpdateInvoiceStatus,
   useBatchDeleteInvoices,
 } from '@/lib/hooks/use-invoices';
@@ -53,21 +54,32 @@ export default function InvoicesPage() {
   const category = searchParams.get('category') || undefined;
   const status = searchParams.get('status') || undefined;
   const month = searchParams.get('month') || undefined;
+  const uploader = searchParams.get('uploader') || undefined;
+  const date_from = searchParams.get('date_from') || undefined;
+  const date_to = searchParams.get('date_to') || undefined;
   const search = searchParams.get('search') || undefined;
   const page = Number(searchParams.get('page')) || 1;
   const page_size = Number(searchParams.get('page_size')) || 20;
 
-  const { data, isLoading, refetch } = useInvoices({
+  const filterParams = {
     category,
     status,
     month,
+    uploader,
+    date_from,
+    date_to,
     search,
+  };
+
+  const { data, isLoading, refetch } = useInvoices({
+    ...filterParams,
     page,
     page_size,
   });
 
   const exportMutation = useExportInvoices();
   const exportByIdsMutation = useExportInvoicesByIds();
+  const reimbursementExportMutation = useExportReimbursementExcel();
   const batchStatusMutation = useBatchUpdateInvoiceStatus();
   const batchDeleteMutation = useBatchDeleteInvoices();
 
@@ -94,8 +106,12 @@ export default function InvoicesPage() {
         onSuccess: () => setSelectedIds([]),
       });
     } else {
-      exportMutation.mutate({ category, status, month });
+      exportMutation.mutate(filterParams);
     }
+  };
+
+  const handleReimbursementExport = () => {
+    reimbursementExportMutation.mutate(filterParams);
   };
 
   const handleClearSelection = () => setSelectedIds([]);
@@ -142,7 +158,7 @@ export default function InvoicesPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-2">
           <h1 className="text-2xl font-semibold">发票管理</h1>
           <PageHelp
@@ -150,26 +166,36 @@ export default function InvoicesPage() {
             tips={[
               '物品管理员可查看、登记和编辑全部库存相关发票',
               '在新增物品时也可以同时上传发票',
-              '使用筛选器按类别、状态、月份查找',
-              '报销状态审批仅超级管理员可操作',
-              '批量改状态、批量删除和发票文件导出仅超级管理员可操作',
+              '可按类别、状态、月份、上传者和自定义日期范围筛选',
+              '发票文件 ZIP 和报销清单 Excel 会继承当前筛选条件',
+              '报销状态审批及批量操作仅超级管理员可操作',
             ]}
           />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {isSuperAdmin && (
-            <Button
-              variant="outline"
-              onClick={handleExport}
-              disabled={exportMutation.isPending || exportByIdsMutation.isPending}
-            >
-              <Download className="h-4 w-4 mr-2" />
-              {exportMutation.isPending || exportByIdsMutation.isPending
-                ? '导出中...'
-                : selectedIds.length > 0
-                  ? `导出选中 (${selectedIds.length})`
-                  : '导出发票'}
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                onClick={handleExport}
+                disabled={exportMutation.isPending || exportByIdsMutation.isPending}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                {exportMutation.isPending || exportByIdsMutation.isPending
+                  ? '导出中...'
+                  : selectedIds.length > 0
+                    ? `导出选中 (${selectedIds.length})`
+                    : '发票文件 ZIP'}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleReimbursementExport}
+                disabled={reimbursementExportMutation.isPending}
+              >
+                <FileSpreadsheet className="h-4 w-4 mr-2" />
+                {reimbursementExportMutation.isPending ? '导出中...' : '报销清单 Excel'}
+              </Button>
+            </>
           )}
           {canCreate() && (
             <Button onClick={() => setShowCreateDialog(true)}>

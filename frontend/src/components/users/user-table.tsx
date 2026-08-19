@@ -179,7 +179,7 @@ export function UserTable({
                     <Button
                       variant="ghost"
                       size="icon"
-                      title="永久删除用户"
+                      title="删除用户"
                       onClick={() => openDeleteDialog(user)}
                       disabled={isDeleting}
                     >
@@ -204,10 +204,10 @@ export function UserTable({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>确认永久删除用户</AlertDialogTitle>
+            <AlertDialogTitle>确认删除用户</AlertDialogTitle>
             <AlertDialogDescription>
-              确定要永久删除用户「{deleteUser?.username}」吗？此操作不可撤销。
-              如果该用户仍负责物品/库位或存在借用、领用、补货、发票等历史记录，系统会拒绝删除以保护台账。
+              删除后用户「{deleteUser?.username}」将立即无法登录并从用户管理列表移除。
+              若账号没有业务历史，系统会永久删除；若关联物品、库位、借用、领用、补货或发票等历史记录，系统会保留历史台账并归档账号。此操作不可撤销。
             </AlertDialogDescription>
           </AlertDialogHeader>
           {deleteError && (
@@ -225,7 +225,7 @@ export function UserTable({
               disabled={isDeleting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {isDeleting ? '删除中...' : '永久删除'}
+              {isDeleting ? '删除中...' : '确认删除'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
