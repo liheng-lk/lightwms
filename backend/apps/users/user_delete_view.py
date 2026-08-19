@@ -1,4 +1,4 @@
-"""Super-admin endpoint for guarded permanent user deletion."""
+"""Super-admin endpoint for history-safe user deletion."""
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
 from rest_framework.response import Response
@@ -16,17 +16,17 @@ class UserDeleteView(APIView):
 
     @extend_schema(
         responses={
-            204: OpenApiResponse(description='User permanently deleted'),
+            204: OpenApiResponse(description='User removed from active user management'),
             400: OpenApiResponse(description='Cannot delete current user'),
             403: OpenApiResponse(description='Permission denied'),
             404: OpenApiResponse(description='User not found'),
-            409: OpenApiResponse(description='User is protected by inventory or business history'),
         },
         tags=['Users'],
         summary='Delete user',
         description=(
-            'Permanently delete an unreferenced user account. Super Admin only. '
-            'Users referenced by inventory ownership or business history are protected.'
+            'Remove a user account. Super Admin only. Unreferenced accounts are '
+            'deleted permanently; accounts referenced by inventory or business '
+            'history are archived and disabled so historical records remain intact.'
         ),
     )
     def delete(self, request, pk):
@@ -48,6 +48,7 @@ class UserDeleteView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
         except UserDeletionConflict as exc:
+            # Kept for compatibility with older service implementations.
             return Response(
                 {
                     'code': 'USER_IN_USE',
