@@ -19,7 +19,7 @@ from rest_framework.views import APIView
 _VERSION_RE = re.compile(r'^v?(\d+)\.(\d+)\.(\d+)$')
 _DOCKERHUB_TAGS_API = os.getenv(
     'UPDATE_CHECK_URL',
-    'https://hub.docker.com/v2/repositories/liheng6668/lightwms-backend/tags?page_size=100&ordering=last_updated',
+    'https://hub.docker.com/v2/namespaces/liheng6668/repositories/lightwms-backend/tags?page_size=100',
 )
 _DOCKERHUB_RELEASE_PAGE = 'https://hub.docker.com/r/liheng6668/lightwms-backend/tags'
 _CACHE_KEY = 'lightwms:version-check:v1'
