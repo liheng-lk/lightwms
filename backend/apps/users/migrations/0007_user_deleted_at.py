@@ -1,0 +1,20 @@
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ('users', '0006_sync_model_indexes_and_date_joined'),
+    ]
+
+    operations = [
+        migrations.AddField(
+            model_name='user',
+            name='deleted_at',
+            field=models.DateTimeField(blank=True, db_index=True, null=True),
+        ),
+        migrations.AlterModelOptions(
+            name='user',
+            options={'base_manager_name': 'all_objects'},
+        ),
+    ]
