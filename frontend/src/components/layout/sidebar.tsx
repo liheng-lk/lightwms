@@ -9,6 +9,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/providers/auth-provider';
 import { useTheme } from '@/providers/theme-provider';
+import { useVersionInfo } from '@/lib/hooks/use-version';
 
 type NavRole = 'super_admin' | 'item_manager' | 'read_only_user';
 
@@ -43,6 +44,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const { user } = useAuth();
   const { settings } = useTheme();
+  const { data: versionInfo } = useVersionInfo();
 
   const filteredItems = navItems.filter((item) => {
     if (!item.roles) return true;
@@ -86,6 +88,20 @@ export function Sidebar() {
           );
         })}
       </nav>
+
+      <div className="border-t border-sidebar-border px-4 py-3 text-xs text-sidebar-foreground/60">
+        <div className="flex items-center justify-between gap-2">
+          <span>版本 {versionInfo?.current_version ? `v${versionInfo.current_version}` : '检测中...'}</span>
+          {user?.role === 'super_admin' && versionInfo?.update_available && versionInfo.latest_version && (
+            <span className="rounded-full bg-amber-500/15 px-2 py-0.5 font-medium text-amber-700 dark:text-amber-300">
+              可更新 v{versionInfo.latest_version}
+            </span>
+          )}
+        </div>
+        {user?.role === 'super_admin' && versionInfo?.error && (
+          <div className="mt-1 truncate" title={versionInfo.error}>{versionInfo.error}</div>
+        )}
+      </div>
     </aside>
   );
 }
