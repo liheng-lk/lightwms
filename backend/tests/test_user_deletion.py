@@ -1,4 +1,4 @@
-"""Regression tests for permanent user deletion."""
+"""Regression tests for history-safe user deletion."""
 import pytest
 from rest_framework.test import APIClient
 
@@ -43,6 +43,7 @@ class TestUserDeletion:
 
         assert response.status_code == 204
         assert not User.objects.filter(pk=target_id).exists()
+        assert not User.all_objects.filter(pk=target_id).exists()
         audit = AuditLog.objects.get(
             action=AuditAction.DELETE,
             target_type=TargetType.USER,
@@ -77,7 +78,7 @@ class TestUserDeletion:
         assert response.status_code == 404
         assert response.data['code'] == 'NOT_FOUND'
 
-    def test_business_reference_blocks_delete_without_losing_data(self, api_client, admin, target):
+    def test_business_reference_is_archived_without_losing_history(self, api_client, admin, target):
         warehouse = Warehouse.objects.create(code='DEL-WH', name='Delete Guard Warehouse')
         location = Location.objects.create(
             warehouse=warehouse,
@@ -90,12 +91,21 @@ class TestUserDeletion:
 
         response = api_client.delete(f'/api/v1/users/{target_id}/')
 
-        assert response.status_code == 409
-        assert response.data['code'] == 'USER_IN_USE'
-        assert User.objects.filter(pk=target_id).exists()
+        assert response.status_code == 204
+        assert not User.objects.filter(pk=target_id).exists()
+        archived = User.all_objects.get(pk=target_id)
+        assert archived.is_active is False
+        assert archived.deleted_at is not None
+        assert archived.tokens_invalid_before is not None
+        assert archived.phone is None
+        assert archived.wechat_openid is None
+        assert not archived.has_usable_password()
         assert Location.objects.filter(pk=location.id, owner_id=target_id).exists()
-        assert not AuditLog.objects.filter(
+
+        audit = AuditLog.objects.get(
             action=AuditAction.DELETE,
             target_type=TargetType.USER,
             target_id=target_id,
-        ).exists()
+        )
+        assert audit.diff['before']['username'] == 'delete_target'
+        assert audit.diff['after']['archived'] is True
