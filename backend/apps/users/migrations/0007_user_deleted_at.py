@@ -13,8 +13,4 @@ class Migration(migrations.Migration):
             name='deleted_at',
             field=models.DateTimeField(blank=True, db_index=True, null=True),
         ),
-        migrations.AlterModelOptions(
-            name='user',
-            options={'base_manager_name': 'all_objects'},
-        ),
     ]
