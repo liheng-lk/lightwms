@@ -13,6 +13,7 @@ from .hardened_views import (
     InvoiceBatchStatusUpdateView,
     InvoiceBatchDeleteView,
 )
+from .metadata_views import InvoiceUploadersView
 from .permission_views import (
     InvoiceStatusUpdateView,
     InvoiceCategoriesView,
@@ -33,4 +34,5 @@ urlpatterns = [
     ),
     path('invoices/categories/', InvoiceCategoriesView.as_view(), name='invoice-categories'),
     path('invoices/months/', InvoiceMonthsView.as_view(), name='invoice-months'),
+    path('invoices/uploaders/', InvoiceUploadersView.as_view(), name='invoice-uploaders'),
 ]
