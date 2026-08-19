@@ -15,7 +15,10 @@ class UserRole(models.TextChoices):
 
 
 class UserManager(BaseUserManager):
-    """Custom user manager for User model."""
+    """Custom user manager for active/non-deleted User rows."""
+
+    def get_queryset(self):
+        return super().get_queryset().filter(deleted_at__isnull=True)
 
     def create_user(self, username, password=None, **extra_fields):
         if not username:
@@ -59,9 +62,13 @@ class User(AbstractUser):
     updated_at = models.DateTimeField(auto_now=True)
 
     objects = UserManager()
+    # Forward/reverse historical relations must still be able to resolve an
+    # archived account even though normal user-management queries hide it.
+    all_objects = models.Manager()
 
     class Meta:
         db_table = 'users_user'
+        base_manager_name = 'all_objects'
         constraints = [
             models.UniqueConstraint(
                 fields=['wechat_openid'],
