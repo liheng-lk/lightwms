@@ -23,10 +23,10 @@ def admin(db):
     )
 
 
-def create_invoice(*, creator, name, category='采购', file_path=None):
+def create_invoice(*, creator, name, category='采购', file_path=None, amount='10.00'):
     return Invoice.objects.create(
         name=name,
-        amount=Decimal('10.00'),
+        amount=Decimal(amount),
         category=category,
         custom_type='',
         project='',
@@ -68,6 +68,58 @@ class TestInvoiceZipExportSafety:
         assert not entry.is_absolute()
         assert '..' not in entry.parts
         assert names[0].count('/') == 1
+
+    def test_exported_file_is_renamed_uploader_name_amount(self, admin):
+        invoice = create_invoice(
+            creator=admin,
+            name='办公用品发票',
+            category='采购',
+            amount='128.50',
+        )
+        materialize(invoice)
+        client = APIClient()
+        client.force_authenticate(user=admin)
+
+        response = client.post('/api/v1/invoices/export/', {'ids': [invoice.id]}, format='json')
+
+        assert response.status_code == status.HTTP_200_OK
+        with zipfile.ZipFile(io.BytesIO(response.content), 'r') as archive:
+            assert archive.namelist() == [
+                '采购/invoice_export_admin+办公用品发票+128.50.pdf'
+            ]
+
+    def test_duplicate_export_names_get_numeric_suffix(self, admin):
+        first = create_invoice(
+            creator=admin,
+            name='同名发票',
+            category='采购',
+            amount='10.00',
+            file_path='invoices/2099/01/duplicate-a.pdf',
+        )
+        second = create_invoice(
+            creator=admin,
+            name='同名发票',
+            category='采购',
+            amount='10.00',
+            file_path='invoices/2099/01/duplicate-b.pdf',
+        )
+        materialize(first, b'first')
+        materialize(second, b'second')
+        client = APIClient()
+        client.force_authenticate(user=admin)
+
+        response = client.post(
+            '/api/v1/invoices/export/',
+            {'ids': [first.id, second.id]},
+            format='json',
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        with zipfile.ZipFile(io.BytesIO(response.content), 'r') as archive:
+            assert archive.namelist() == [
+                '采购/invoice_export_admin+同名发票+10.00.pdf',
+                '采购/invoice_export_admin+同名发票+10.00_2.pdf',
+            ]
 
     def test_stored_file_path_cannot_escape_media_root(self, admin):
         media_root = Path(settings.MEDIA_ROOT).resolve()
