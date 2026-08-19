@@ -91,6 +91,17 @@ def _safe_archive_component(value, fallback='unknown', max_length=60):
     return cleaned[:max_length]
 
 
+def _invoice_archive_filename(invoice: Invoice, ext: str) -> str:
+    """Build exported filename as 上传人+发票名称+发票金额.ext."""
+    uploader = _safe_archive_component(
+        invoice.created_by.username if invoice.created_by else 'unknown',
+        fallback='unknown',
+    )
+    invoice_name = _safe_archive_component(invoice.name, fallback='invoice')
+    amount = _safe_archive_component(format(invoice.amount, 'f'), fallback='0.00')
+    return f'{uploader}+{invoice_name}+{amount}{ext}'
+
+
 def _resolve_invoice_file(file_path: str) -> Path:
     """Resolve an invoice file and guarantee it remains below MEDIA_ROOT."""
     media_root = Path(settings.MEDIA_ROOT).resolve()
@@ -106,6 +117,7 @@ def _resolve_invoice_file(file_path: str) -> Path:
 
 def _export_files_to_safe_zip(invoices) -> bytes:
     output = io.BytesIO()
+    used_names: set[str] = set()
     with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
         for invoice in invoices:
             if not invoice.file:
@@ -115,18 +127,20 @@ def _export_files_to_safe_zip(invoices) -> bytes:
                 continue
 
             ext = os.path.splitext(invoice.file)[1].lower()
-            date_str = invoice.created_at.strftime('%Y%m%d')
             category = _safe_archive_component(invoice.category, fallback='未分类')
-            item_name = _safe_archive_component(
-                invoice.item.name if invoice.item else invoice.name,
-                fallback='invoice',
-            )
-            uploader = _safe_archive_component(
-                invoice.created_by.username if invoice.created_by else 'unknown',
-                fallback='unknown',
-            )
-            # Invoice id prevents two same-day invoices from producing duplicate ZIP names.
-            archive_name = f'{category}/{date_str}_{invoice.id}_{item_name}_{uploader}{ext}'
+            exported_filename = _invoice_archive_filename(invoice, ext)
+            archive_name = f'{category}/{exported_filename}'
+
+            # Exact duplicates are rare but possible. Preserve the requested
+            # naming format for the first file and only add a numeric suffix
+            # when required to avoid duplicate paths inside the ZIP archive.
+            if archive_name in used_names:
+                stem, suffix = os.path.splitext(exported_filename)
+                duplicate_index = 2
+                while f'{category}/{stem}_{duplicate_index}{suffix}' in used_names:
+                    duplicate_index += 1
+                archive_name = f'{category}/{stem}_{duplicate_index}{suffix}'
+            used_names.add(archive_name)
             archive.write(file_path, archive_name)
 
     output.seek(0)
