@@ -126,10 +126,18 @@ class TestInvoiceFilteredExports:
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
         workbook = openpyxl.load_workbook(io.BytesIO(response.content))
-        sheet = workbook['发票清单']
-        assert sheet.cell(2, 1).value == in_range.name
-        assert sheet.cell(2, 8).value == uploader.username
-        assert sheet.max_row == 2
+        sheet = workbook['报销清单']
+        assert [cell.value for cell in sheet[1]][:11] == [
+            '序号', '发票名称', '金额（元）', '类别', '类型', '项目',
+            '报销状态', '关联物品', '登记月份', '上传者', '上传时间',
+        ]
+        assert sheet.cell(2, 1).value == 1
+        assert sheet.cell(2, 2).value == in_range.name
+        assert sheet.cell(2, 3).value == 88.5
+        assert sheet.cell(2, 10).value == uploader.username
+        assert sheet.cell(3, 2).value == '合计'
+        assert sheet.cell(3, 3).value == 88.5
+        assert sheet.max_row == 3
 
     def test_zip_export_respects_uploader_filter(self, admin, uploader):
         wanted = create_invoice(
