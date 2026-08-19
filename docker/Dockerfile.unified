@@ -68,6 +68,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# Keep the repository release version available to the backend update checker.
+COPY VERSION /app/VERSION
+
 # 使用清华源加速
 RUN sed -i 's/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list.d/debian.sources
 
