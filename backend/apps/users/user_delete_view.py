@@ -1,4 +1,4 @@
-"""Super-admin endpoint for guarded permanent user deletion."""
+"""Super-admin endpoint for safe user deletion."""
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
 from rest_framework.response import Response
@@ -6,7 +6,7 @@ from rest_framework.views import APIView
 
 from core.permissions import IsSuperAdmin
 from .models import User
-from .services.user_deletion_service import UserDeletionConflict, UserDeletionService
+from .services.user_deletion_service import UserDeletionService
 
 
 class UserDeleteView(APIView):
@@ -16,17 +16,16 @@ class UserDeleteView(APIView):
 
     @extend_schema(
         responses={
-            204: OpenApiResponse(description='User permanently deleted'),
+            204: OpenApiResponse(description='User account deleted safely'),
             400: OpenApiResponse(description='Cannot delete current user'),
             403: OpenApiResponse(description='Permission denied'),
             404: OpenApiResponse(description='User not found'),
-            409: OpenApiResponse(description='User is protected by inventory or business history'),
         },
         tags=['Users'],
         summary='Delete user',
         description=(
-            'Permanently delete an unreferenced user account. Super Admin only. '
-            'Users referenced by inventory ownership or business history are protected.'
+            'Delete a user account without removing inventory, invoice or operation history. '
+            'The account is disabled and hidden from user management while historical attribution is retained.'
         ),
     )
     def delete(self, request, pk):
@@ -46,15 +45,6 @@ class UserDeleteView(APIView):
             return Response(
                 {'code': 'NOT_FOUND', 'message': 'User not found.', 'details': None},
                 status=status.HTTP_404_NOT_FOUND,
-            )
-        except UserDeletionConflict as exc:
-            return Response(
-                {
-                    'code': 'USER_IN_USE',
-                    'message': str(exc),
-                    'details': {'protected_models': exc.protected_models},
-                },
-                status=status.HTTP_409_CONFLICT,
             )
         except ValueError as exc:
             return Response(
