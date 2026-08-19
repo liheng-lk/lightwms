@@ -8,7 +8,6 @@ from django.utils import timezone
 
 
 class UserRole(models.TextChoices):
-    """User role enumeration."""
     SUPER_ADMIN = 'super_admin', 'Super Admin'
     ITEM_MANAGER = 'item_manager', 'Item Manager'
     READ_ONLY_USER = 'read_only_user', '普通用户'
@@ -52,6 +51,10 @@ class User(AbstractUser):
     )
     must_change_password = models.BooleanField(default=False)
     tokens_invalid_before = models.DateTimeField(blank=True, null=True)
+    # A deleted account remains as a historical FK target so inventory,
+    # invoices and operation ledgers keep their attribution. It is hidden from
+    # user management and can no longer authenticate.
+    deleted_at = models.DateTimeField(blank=True, null=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -85,6 +88,10 @@ class User(AbstractUser):
     @property
     def is_read_only_user(self):
         return self.role == UserRole.READ_ONLY_USER
+
+    @property
+    def is_deleted(self):
+        return self.deleted_at is not None
 
 
 class InviteCodeStatus(models.TextChoices):
@@ -152,8 +159,6 @@ class InviteCode(models.Model):
 
 
 class WechatOAuthState(models.Model):
-    """One-time CSRF state issued before a WeChat OAuth callback."""
-
     state = models.CharField(max_length=100, unique=True)
     redirect_uri = models.CharField(max_length=500, blank=True, default='')
     expires_at = models.DateTimeField()
