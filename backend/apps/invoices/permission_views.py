@@ -6,9 +6,9 @@ from core.permissions import IsItemManagerOrSuperAdmin, IsSuperAdmin
 from core.role_utils import is_super_admin
 from core.pagination import StandardPagination
 
+from .filters import InvoiceFilterError, get_filtered_invoices
 from .models import Invoice
 from .serializers import InvoiceSerializer
-from .services import InvoiceService
 from .views import (
     InvoiceListCreateView as BaseInvoiceListCreateView,
     InvoiceDetailView as BaseInvoiceDetailView,
@@ -25,19 +25,13 @@ class InvoiceListCreateView(BaseInvoiceListCreateView):
     permission_classes = [IsItemManagerOrSuperAdmin]
 
     def get(self, request):
-        category = request.query_params.get('category')
-        status_filter = request.query_params.get('status')
-        month = request.query_params.get('month')
-        item_id = request.query_params.get('item')
-        search = request.query_params.get('search')
-
-        invoices = InvoiceService.list(
-            category=category,
-            status=status_filter,
-            registered_month=month,
-            item_id=int(item_id) if item_id else None,
-            search=search,
-        )
+        try:
+            invoices = get_filtered_invoices(request.query_params)
+        except InvoiceFilterError as exc:
+            return Response(
+                {'code': 'INVALID_FILTER', 'message': str(exc), 'details': None},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         paginator = StandardPagination()
         page = paginator.paginate_queryset(invoices, request)
