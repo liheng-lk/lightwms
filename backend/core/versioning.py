@@ -92,7 +92,10 @@ def get_latest_version() -> tuple[str | None, str, str | None]:
         interval = 1800
 
     cache_key = f'lightwms:latest-version:{url}'
-    cached = cache.get(cache_key)
+    try:
+        cached = cache.get(cache_key)
+    except Exception:
+        cached = None
     if isinstance(cached, str) and cached:
         return cached, 'cache', None
 
@@ -102,7 +105,12 @@ def get_latest_version() -> tuple[str | None, str, str | None]:
         return None, 'remote', '版本检查暂不可用'
 
     if latest:
-        cache.set(cache_key, latest, timeout=interval)
+        try:
+            cache.set(cache_key, latest, timeout=interval)
+        except Exception:
+            # Version checking is informational and must never make Redis a
+            # hard dependency for an otherwise healthy LightWMS instance.
+            pass
     return latest, 'remote', None
 
 
