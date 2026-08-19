@@ -52,6 +52,10 @@ class User(AbstractUser):
     )
     must_change_password = models.BooleanField(default=False)
     tokens_invalid_before = models.DateTimeField(blank=True, null=True)
+    # A deleted account remains as a historical FK target so inventory,
+    # invoices and operation ledgers keep their attribution. It is hidden from
+    # user management and can no longer authenticate.
+    deleted_at = models.DateTimeField(blank=True, null=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -85,6 +89,10 @@ class User(AbstractUser):
     @property
     def is_read_only_user(self):
         return self.role == UserRole.READ_ONLY_USER
+
+    @property
+    def is_deleted(self):
+        return self.deleted_at is not None
 
 
 class InviteCodeStatus(models.TextChoices):

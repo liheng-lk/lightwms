@@ -100,8 +100,9 @@ RUN groupadd --gid 1000 appgroup \
 COPY --from=backend-builder /backend/wheels /wheels
 RUN pip install --no-cache-dir /wheels/* && rm -rf /wheels
 
-# Copy backend code
+# Copy backend code and the single source of truth for runtime version detection
 COPY --chown=appuser:appgroup backend/ /app/backend/
+COPY --chown=appuser:appgroup VERSION /app/VERSION
 
 # Copy frontend standalone build
 COPY --from=frontend-builder --chown=appuser:appgroup /frontend/.next/standalone /app/frontend/

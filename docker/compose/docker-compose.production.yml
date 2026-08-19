@@ -67,6 +67,9 @@ services:
       - DJANGO_SUPERUSER_USERNAME=${DJANGO_SUPERUSER_USERNAME:-admin}
       - DJANGO_SUPERUSER_PASSWORD=${DJANGO_SUPERUSER_PASSWORD:-}
       - DJANGO_SUPERUSER_EMAIL=${DJANGO_SUPERUSER_EMAIL:-admin@example.com}
+      - UPDATE_CHECK_URL=${UPDATE_CHECK_URL:-https://hub.docker.com/v2/repositories/liheng6668/lightwms-backend/tags?page_size=100}
+      - UPDATE_CHECK_INTERVAL_SECONDS=${UPDATE_CHECK_INTERVAL_SECONDS:-1800}
+      - LIGHTWMS_LATEST_VERSION=${LIGHTWMS_LATEST_VERSION:-}
     volumes:
       - media_data:/app/backend/media
       - static_data:/app/backend/staticfiles

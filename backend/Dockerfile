@@ -17,8 +17,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Resolve the complete dependency graph once and build a local wheelhouse.
-# Do not use --no-deps here: independent wheel selection can combine mutually
-# incompatible versions even when a normal `pip install -r` would resolve them.
 COPY requirements.txt .
 RUN pip wheel --no-cache-dir --wheel-dir /app/wheels -r requirements.txt
 
@@ -26,16 +24,18 @@ RUN pip wheel --no-cache-dir --wheel-dir /app/wheels -r requirements.txt
 # Stage 2: Production stage
 FROM python:3.11-slim-bookworm AS production
 
+ARG LIGHTWMS_VERSION=unknown
+
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     DJANGO_SETTINGS_MODULE=config.settings.production \
-    APP_HOME=/app
+    APP_HOME=/app \
+    LIGHTWMS_VERSION=${LIGHTWMS_VERSION}
 
 WORKDIR $APP_HOME
 
-# Keep the runtime tied to Debian bookworm so libvips package names are stable
-# and Docker builds do not depend on a third-party mirror changing underneath us.
+# Keep the runtime tied to Debian bookworm so libvips package names are stable.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     libvips42 \

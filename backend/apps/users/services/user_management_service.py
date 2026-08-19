@@ -19,6 +19,14 @@ class UserManagementService:
         user.tokens_invalid_before = timezone.now().replace(microsecond=0)
 
     @staticmethod
+    def _managed_user(user_id: int, *, for_update: bool = False) -> User:
+        """Return a non-deleted user; retired accounts cannot be revived via admin APIs."""
+        queryset = User.objects.filter(deleted_at__isnull=True)
+        if for_update:
+            queryset = queryset.select_for_update()
+        return queryset.get(pk=user_id)
+
+    @staticmethod
     def _audit(
         *, action: str, user: User, operator: User, before: dict | None,
         after: dict | None, ip: str = '', user_agent: str = ''
@@ -36,7 +44,7 @@ class UserManagementService:
 
     def disable_user(self, user_id: int, operator: User, ip: str = '', user_agent: str = '') -> User:
         with transaction.atomic():
-            user = User.objects.select_for_update().get(pk=user_id)
+            user = self._managed_user(user_id, for_update=True)
             if user.id == operator.id:
                 raise ValueError('Cannot disable your own account')
 
@@ -63,7 +71,7 @@ class UserManagementService:
 
     def reset_password(self, user_id: int, operator: User, ip: str = '', user_agent: str = '') -> tuple[User, str]:
         with transaction.atomic():
-            user = User.objects.select_for_update().get(pk=user_id)
+            user = self._managed_user(user_id, for_update=True)
             before = {
                 'must_change_password': user.must_change_password,
                 'tokens_invalid_before': user.tokens_invalid_before.isoformat() if user.tokens_invalid_before else None,
@@ -89,7 +97,7 @@ class UserManagementService:
             return user, temp_password
 
     def list_users(self, role: str = None, is_active: bool = None, date_from=None, date_to=None):
-        queryset = User.objects.all().order_by('-created_at', '-id')
+        queryset = User.objects.filter(deleted_at__isnull=True).order_by('-created_at', '-id')
         if role is not None:
             queryset = queryset.filter(role=role)
         if is_active is not None:
@@ -150,7 +158,7 @@ class UserManagementService:
         ip: str = '', user_agent: str = ''
     ) -> User:
         with transaction.atomic():
-            locked_user = User.objects.select_for_update().get(pk=user.pk)
+            locked_user = self._managed_user(user.pk, for_update=True)
             if not check_password(old_password, locked_user.password):
                 raise ValueError('当前密码不正确')
 
@@ -180,7 +188,7 @@ class UserManagementService:
         ip: str = '', user_agent: str = ''
     ) -> User:
         with transaction.atomic():
-            user = User.objects.select_for_update().get(pk=user_id)
+            user = self._managed_user(user_id, for_update=True)
             user.set_password(new_password)
             user.must_change_password = False
             self._invalidate_sessions(user)
@@ -204,7 +212,7 @@ class UserManagementService:
 
     def enable_user(self, user_id: int, operator: User, ip: str = '', user_agent: str = '') -> User:
         with transaction.atomic():
-            user = User.objects.select_for_update().get(pk=user_id)
+            user = self._managed_user(user_id, for_update=True)
             before = {'is_active': user.is_active}
             user.is_active = True
             user.save(update_fields=['is_active', 'updated_at'])
@@ -224,7 +232,7 @@ class UserManagementService:
         ip: str = '', user_agent: str = ''
     ) -> User:
         with transaction.atomic():
-            user = User.objects.select_for_update().get(pk=user_id)
+            user = self._managed_user(user_id, for_update=True)
             if user.id == operator.id:
                 raise ValueError('不能修改自己的角色')
 

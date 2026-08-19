@@ -1,27 +1,22 @@
-"""Guarded permanent user deletion for LightWMS."""
+"""Safe user deletion for LightWMS.
+
+User rows referenced by inventory or ledger history cannot be physically deleted
+without damaging traceability.  A Super Admin deletion therefore retires the
+account: authentication is disabled, tokens are invalidated and sensitive
+contact/OAuth fields are cleared, while the row remains as the immutable target
+of historical foreign keys.
+"""
 from __future__ import annotations
 
 from django.db import transaction
-from django.db.models.deletion import ProtectedError
+from django.utils import timezone
 
 from apps.audit.models import AuditAction, AuditLog, TargetType
 from ..models import User
 
 
-class UserDeletionConflict(Exception):
-    """Raised when business records protect a user from permanent deletion."""
-
-    def __init__(self, protected_models: list[str] | None = None):
-        self.protected_models = protected_models or []
-        message = (
-            '该用户仍关联库存责任或业务历史，不能永久删除。'
-            '请先转移物品/库位责任；如存在历史业务记录，请禁用该用户以保留台账。'
-        )
-        super().__init__(message)
-
-
 class UserDeletionService:
-    """Delete unused user accounts without damaging inventory/history."""
+    """Retire a user account without deleting business history."""
 
     def delete_user(
         self,
@@ -30,40 +25,74 @@ class UserDeletionService:
         ip: str = '',
         user_agent: str = '',
     ) -> tuple[int, str]:
-        """Permanently delete an unreferenced user and retain an audit snapshot."""
-        try:
-            with transaction.atomic():
-                user = User.objects.select_for_update().get(pk=user_id)
-                if user.id == operator.id:
-                    raise ValueError('不能删除当前登录的超级管理员账户')
+        """Soft-delete a user and retain a complete audit snapshot."""
+        with transaction.atomic():
+            user = (
+                User.objects.select_for_update()
+                .filter(deleted_at__isnull=True)
+                .get(pk=user_id)
+            )
+            if user.id == operator.id:
+                raise ValueError('不能删除当前登录的超级管理员账户')
 
-                target_id = user.id
-                username = user.username
-                snapshot = {
-                    'username': user.username,
-                    'role': user.role,
-                    'is_active': user.is_active,
-                    'email': user.email or '',
-                    'department': user.department or '',
-                }
+            target_id = user.id
+            username = user.username
+            snapshot = {
+                'username': user.username,
+                'role': user.role,
+                'is_active': user.is_active,
+                'email': user.email or '',
+                'phone': user.phone or '',
+                'department': user.department or '',
+                'wechat_openid_present': bool(user.wechat_openid),
+            }
 
-                # Django PROTECT relations are intentional in LightWMS: ownership
-                # and ledger history must never disappear with an account.
-                user.delete()
+            now = timezone.now()
+            user.is_active = False
+            user.deleted_at = now
+            user.tokens_invalid_before = now.replace(microsecond=0)
+            user.must_change_password = False
+            user.set_unusable_password()
 
-                AuditLog.objects.create(
-                    action=AuditAction.DELETE,
-                    target_type=TargetType.USER,
-                    target_id=target_id,
-                    diff={'before': snapshot, 'after': None},
-                    operator=operator,
-                    operator_role=operator.role,
-                    ip=ip or None,
-                    user_agent=user_agent,
-                )
-                return target_id, username
-        except ProtectedError as exc:
-            protected_models = sorted({
-                obj._meta.verbose_name for obj in exc.protected_objects
-            })
-            raise UserDeletionConflict(protected_models) from exc
+            # Keep username for historical attribution (invoice uploader,
+            # borrower/operator display etc.), but remove contact/OAuth data.
+            user.email = ''
+            user.phone = None
+            user.department = ''
+            user.wechat_openid = None
+            user.first_name = ''
+            user.last_name = ''
+            user.save(update_fields=[
+                'is_active',
+                'deleted_at',
+                'tokens_invalid_before',
+                'must_change_password',
+                'password',
+                'email',
+                'phone',
+                'department',
+                'wechat_openid',
+                'first_name',
+                'last_name',
+                'updated_at',
+            ])
+
+            AuditLog.objects.create(
+                action=AuditAction.DELETE,
+                target_type=TargetType.USER,
+                target_id=target_id,
+                diff={
+                    'before': snapshot,
+                    'after': {
+                        'username': username,
+                        'is_active': False,
+                        'deleted_at': now.isoformat(),
+                        'account_retired': True,
+                    },
+                },
+                operator=operator,
+                operator_role=operator.role,
+                ip=ip or None,
+                user_agent=user_agent,
+            )
+            return target_id, username

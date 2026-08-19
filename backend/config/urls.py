@@ -8,15 +8,16 @@ from django.conf.urls.static import static
 from django.views.static import serve
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
-from core.views import health_check
+from core.views import health_check, version_check
 from apps.users.urls import auth_urlpatterns, user_urlpatterns, invite_code_urlpatterns
 from apps.operations.urls import item_borrow_urlpatterns, item_consumable_urlpatterns
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     
-    # Health check endpoint
+    # Health and version endpoints
     path('api/v1/health/', health_check, name='health-check'),
+    path('api/v1/version/', version_check, name='version-check'),
     
     # Authentication endpoints
     path('api/v1/auth/', include(auth_urlpatterns)),
