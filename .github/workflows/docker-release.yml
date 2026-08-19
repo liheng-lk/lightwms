@@ -15,7 +15,12 @@ concurrency:
 
 jobs:
   publish:
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, 'release:')
+    # Keep explicit release commits/manual dispatch compatible, and also make
+    # VERSION the release switch so a real version bump publishes its images.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.event.head_commit.message, 'release:') ||
+      contains(github.event.head_commit.modified, 'VERSION')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
