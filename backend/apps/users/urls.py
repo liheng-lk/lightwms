@@ -4,6 +4,7 @@ URL configuration for users app.
 from django.urls import path
 
 from .security_views import InviteCodeDetailView, LogoutView
+from .user_delete_view import UserDeleteView
 from .views import (
     LoginView,
     RefreshView,
@@ -42,6 +43,7 @@ user_urlpatterns = [
     path('me/', UserMeView.as_view(), name='me'),
     path('me/change-password/', ChangePasswordView.as_view(), name='change-password'),
     path('create/', UserCreateView.as_view(), name='user-create'),
+    path('<int:pk>/', UserDeleteView.as_view(), name='user-delete'),
     path('<int:pk>/disable/', UserDisableView.as_view(), name='user-disable'),
     path('<int:pk>/enable/', UserEnableView.as_view(), name='user-enable'),
     path('<int:pk>/reset-password/', UserResetPasswordView.as_view(), name='user-reset-password'),
