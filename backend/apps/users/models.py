@@ -8,6 +8,7 @@ from django.utils import timezone
 
 
 class UserRole(models.TextChoices):
+    """User role enumeration."""
     SUPER_ADMIN = 'super_admin', 'Super Admin'
     ITEM_MANAGER = 'item_manager', 'Item Manager'
     READ_ONLY_USER = 'read_only_user', '普通用户'
@@ -159,6 +160,8 @@ class InviteCode(models.Model):
 
 
 class WechatOAuthState(models.Model):
+    """One-time CSRF state issued before a WeChat OAuth callback."""
+
     state = models.CharField(max_length=100, unique=True)
     redirect_uri = models.CharField(max_length=500, blank=True, default='')
     expires_at = models.DateTimeField()
