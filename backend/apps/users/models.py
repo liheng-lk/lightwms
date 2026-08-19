@@ -62,13 +62,11 @@ class User(AbstractUser):
     updated_at = models.DateTimeField(auto_now=True)
 
     objects = UserManager()
-    # Forward/reverse historical relations must still be able to resolve an
-    # archived account even though normal user-management queries hide it.
+    # Explicit escape hatch for maintenance/tests that need archived rows.
     all_objects = models.Manager()
 
     class Meta:
         db_table = 'users_user'
-        base_manager_name = 'all_objects'
         constraints = [
             models.UniqueConstraint(
                 fields=['wechat_openid'],
