@@ -1,6 +1,8 @@
 """History-safe user deletion for LightWMS."""
 from __future__ import annotations
 
+import secrets
+
 from django.db import transaction
 from django.db.models.deletion import ProtectedError
 from django.utils import timezone
@@ -28,12 +30,11 @@ class UserDeletionService:
         user_agent: str = '',
     ) -> tuple[int, str, bool]:
         """
-        Delete an unused account physically; archive referenced accounts.
+        Delete an unused account physically; anonymize referenced accounts.
 
         Returns ``(target_id, username, archived)``.  An archived account is
-        disabled, hidden from user management and has all tokens invalidated,
-        while foreign keys from invoices/inventory/ledgers keep pointing at the
-        historical account row.
+        disabled, anonymized, hidden from user management and has all tokens
+        invalidated, while foreign keys keep pointing at the historical row.
         """
         with transaction.atomic():
             user = User.objects.select_for_update().get(pk=user_id)
@@ -48,8 +49,6 @@ class UserDeletionService:
                 'username': user.username,
                 'role': user.role,
                 'is_active': user.is_active,
-                'email': user.email or '',
-                'department': user.department or '',
             }
 
             archived = False
@@ -61,18 +60,28 @@ class UserDeletionService:
             except ProtectedError:
                 archived = True
                 now = timezone.now().replace(microsecond=0)
+                user.username = f'deleted-user-{target_id}-{secrets.token_hex(4)}'
                 user.is_active = False
+                user.is_staff = False
+                user.is_superuser = False
                 user.deleted_at = now
                 user.tokens_invalid_before = now
                 user.must_change_password = False
                 user.phone = None
                 user.wechat_openid = None
+                user.email = None
+                user.department = ''
+                user.first_name = ''
+                user.last_name = ''
                 user.set_unusable_password()
                 user.save(update_fields=[
-                    'is_active', 'deleted_at', 'tokens_invalid_before',
-                    'must_change_password', 'phone', 'wechat_openid', 'password',
-                    'updated_at',
+                    'username', 'is_active', 'is_staff', 'is_superuser',
+                    'deleted_at', 'tokens_invalid_before', 'must_change_password',
+                    'phone', 'wechat_openid', 'email', 'department',
+                    'first_name', 'last_name', 'password', 'updated_at',
                 ])
+                user.groups.clear()
+                user.user_permissions.clear()
 
             AuditLog.objects.create(
                 action=AuditAction.DELETE,
@@ -83,6 +92,7 @@ class UserDeletionService:
                     'after': {
                         'archived': True,
                         'is_active': False,
+                        'anonymized': True,
                     } if archived else None,
                 },
                 operator=operator,

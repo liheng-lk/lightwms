@@ -27,7 +27,7 @@ cp docker/.env.example .env
 # 必须修改 SECRET_KEY 和 POSTGRES_PASSWORD
 
 # 3. 推荐固定正式版本
-# .env 中设置：LIGHTWMS_VERSION=1.1.1
+# .env 中设置：LIGHTWMS_VERSION=1.2.1
 
 # 4. 启动
 docker compose -f docker/compose/docker-compose.dockerhub.yml pull
@@ -73,21 +73,29 @@ SECURE_COOKIES=true
 
 | 服务 | 正式版本 | 最新版本 |
 |---|---|---|
-| Backend | `liheng6668/lightwms-backend:1.1.1` | `liheng6668/lightwms-backend:latest` |
-| Frontend | `liheng6668/lightwms-frontend:1.1.1` | `liheng6668/lightwms-frontend:latest` |
+| Backend | `liheng6668/lightwms-backend:1.2.1` | `liheng6668/lightwms-backend:latest` |
+| Frontend | `liheng6668/lightwms-frontend:1.2.1` | `liheng6668/lightwms-frontend:latest` |
 
-生产环境建议固定 `LIGHTWMS_VERSION=1.1.1`，确认升级后再切换版本。
+生产环境建议固定 `LIGHTWMS_VERSION=1.2.1`，确认升级后再切换版本。
 
 ## 功能
 
 - 物品、分类、仓库、库位管理
 - 借用、归还、领用、补货
 - 条码扫码与批量导入导出
-- 发票管理
+- 发票管理与报销清单导出
 - 用户、角色和邀请码
 - 审计日志和登录日志
 - 系统 Logo 与设置
 - 移动端适配
+
+## 生产安全
+
+- 发票附件属于私有业务文件，不能通过公开 `/media/invoices/*` 直接读取；管理人员查看发票时会经过登录和角色权限校验。
+- 发票上传不仅检查扩展名和大小，还校验 PDF/JPG/PNG 的文件签名，降低伪装文件上传风险。
+- 删除存在业务历史的用户时保留外键历史，但会禁用账户、失效令牌并匿名化不再需要的个人信息。
+- `/api/v1/health/` 同时检查 PostgreSQL 和缓存依赖，关键依赖异常时返回 503，供 Docker 健康检查使用。
+- 数据库与上传文件应一起备份。备份与恢复说明见 [BACKUP_RESTORE.md](BACKUP_RESTORE.md)。
 
 ## 技术栈
 
@@ -107,7 +115,7 @@ SECURE_COOKIES=true
 - 不公开固定管理员密码或邀请码
 - 互联网暴露时使用 HTTPS
 - HTTPS 部署时设置 `SECURE_COOKIES=true`
-- 定期备份 PostgreSQL 与上传文件
+- 定期备份 PostgreSQL 与上传文件，并执行恢复演练
 
 ## License
 

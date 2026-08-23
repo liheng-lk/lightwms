@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { clearAuthCookies, getAuthCookies, setAuthCookies } from '@/lib/auth/cookies';
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://backend:8000';
 const BACKEND_ORIGIN = new URL(BACKEND_URL).origin;
 const PUBLIC_PREFIX = '/api/media/';
-const BACKEND_PREFIX = '/media/';
+const PUBLIC_BACKEND_PREFIX = '/media/';
+const PRIVATE_BACKEND_PREFIX = '/api/v1/private-media/';
 
 const REQUEST_HEADERS = [
   'accept',
@@ -24,7 +26,12 @@ const RESPONSE_HEADERS = [
   'last-modified',
 ] as const;
 
-function buildBackendMediaUrl(request: NextRequest): URL | null {
+interface MediaTarget {
+  url: URL;
+  privateInvoice: boolean;
+}
+
+function buildBackendMediaTarget(request: NextRequest): MediaTarget | null {
   const pathname = request.nextUrl.pathname;
   if (!pathname.startsWith(PUBLIC_PREFIX)) {
     return null;
@@ -55,18 +62,48 @@ function buildBackendMediaUrl(request: NextRequest): URL | null {
     }
   }
 
-  const url = new URL(`${BACKEND_PREFIX}${encodedPath}`, BACKEND_URL);
-  if (url.origin !== BACKEND_ORIGIN || !url.pathname.startsWith(BACKEND_PREFIX)) {
+  const privateInvoice = encodedPath.toLowerCase().startsWith('invoices/');
+  const backendPrefix = privateInvoice ? PRIVATE_BACKEND_PREFIX : PUBLIC_BACKEND_PREFIX;
+  const url = new URL(`${backendPrefix}${encodedPath}`, BACKEND_URL);
+
+  if (url.origin !== BACKEND_ORIGIN || !url.pathname.startsWith(backendPrefix)) {
     return null;
   }
 
   url.search = request.nextUrl.search;
-  return url;
+  return { url, privateInvoice };
+}
+
+async function refreshAccessToken(refreshToken: string): Promise<string | null> {
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/v1/auth/refresh/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh: refreshToken }),
+      redirect: 'manual',
+      cache: 'no-store',
+    });
+    if (!response.ok) {
+      await clearAuthCookies();
+      return null;
+    }
+
+    const tokens = await response.json();
+    if (!tokens?.access || !tokens?.refresh) {
+      await clearAuthCookies();
+      return null;
+    }
+    await setAuthCookies(tokens.access, tokens.refresh);
+    return tokens.access as string;
+  } catch {
+    await clearAuthCookies();
+    return null;
+  }
 }
 
 async function proxyMedia(request: NextRequest, method: 'GET' | 'HEAD') {
-  const url = buildBackendMediaUrl(request);
-  if (!url) {
+  const target = buildBackendMediaTarget(request);
+  if (!target) {
     return NextResponse.json({ detail: 'Invalid media path' }, { status: 400 });
   }
 
@@ -78,14 +115,38 @@ async function proxyMedia(request: NextRequest, method: 'GET' | 'HEAD') {
     }
   }
 
+  let refreshToken: string | null = null;
+  if (target.privateInvoice) {
+    const auth = await getAuthCookies();
+    refreshToken = auth.refreshToken;
+    if (!auth.accessToken) {
+      return NextResponse.json({ detail: 'Authentication required' }, { status: 401 });
+    }
+    headers.set('Authorization', `Bearer ${auth.accessToken}`);
+  }
+
   let response: Response;
   try {
-    response = await fetch(url.toString(), {
+    response = await fetch(target.url.toString(), {
       method,
       headers,
       redirect: 'manual',
       cache: 'no-store',
     });
+
+    if (target.privateInvoice && response.status === 401 && refreshToken) {
+      const refreshedAccess = await refreshAccessToken(refreshToken);
+      if (!refreshedAccess) {
+        return NextResponse.json({ detail: 'Authentication required' }, { status: 401 });
+      }
+      headers.set('Authorization', `Bearer ${refreshedAccess}`);
+      response = await fetch(target.url.toString(), {
+        method,
+        headers,
+        redirect: 'manual',
+        cache: 'no-store',
+      });
+    }
   } catch {
     return NextResponse.json({ detail: 'Media backend unavailable' }, { status: 502 });
   }
@@ -102,6 +163,10 @@ async function proxyMedia(request: NextRequest, method: 'GET' | 'HEAD') {
     }
   }
   responseHeaders.set('X-Content-Type-Options', 'nosniff');
+  if (target.privateInvoice) {
+    responseHeaders.set('Cache-Control', 'private, no-store');
+    responseHeaders.set('X-Robots-Tag', 'noindex, nofollow');
+  }
 
   return new NextResponse(method === 'HEAD' ? null : response.body, {
     status: response.status,
