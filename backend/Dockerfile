@@ -39,9 +39,12 @@ WORKDIR $APP_HOME
 
 # Keep the runtime tied to Debian bookworm so libvips package names are stable
 # and Docker builds do not depend on a third-party mirror changing underneath us.
+# tar is intentionally present because the supported backup/restore commands
+# stream the media volume through the backend container.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     libvips42 \
+    tar \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
