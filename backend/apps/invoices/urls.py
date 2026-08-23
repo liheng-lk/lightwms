@@ -19,6 +19,7 @@ from .permission_views import (
     InvoiceCategoriesView,
     InvoiceMonthsView,
 )
+from .private_views import PrivateInvoiceFileView
 
 urlpatterns = [
     path('invoices/', InvoiceListCreateView.as_view(), name='invoice-list-create'),
@@ -35,4 +36,9 @@ urlpatterns = [
     path('invoices/categories/', InvoiceCategoriesView.as_view(), name='invoice-categories'),
     path('invoices/months/', InvoiceMonthsView.as_view(), name='invoice-months'),
     path('invoices/uploaders/', InvoiceUploadersView.as_view(), name='invoice-uploaders'),
+    path(
+        'private-media/invoices/<path:path>',
+        PrivateInvoiceFileView.as_view(),
+        name='private-invoice-file',
+    ),
 ]
