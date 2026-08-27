@@ -1,12 +1,17 @@
 """
 Serializers for user authentication and management.
 """
+import re
+
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
-from .models import User, UserRole, InviteCode, InviteCodeStatus
+from .models import User, UserRole, InviteCode
+
+
+_USERNAME_PATTERN = re.compile(r'^[A-Za-z0-9_\u4e00-\u9fff]+$')
 
 
 def validate_account_password(value: str) -> str:
@@ -15,6 +20,15 @@ def validate_account_password(value: str) -> str:
         validate_password(value)
     except DjangoValidationError as exc:
         raise serializers.ValidationError(list(exc.messages))
+    return value
+
+
+def validate_account_username(value: str) -> str:
+    """Use one username character contract for every account creation path."""
+    if not _USERNAME_PATTERN.fullmatch(value):
+        raise serializers.ValidationError(
+            'Username can only contain Chinese characters, English letters, numbers, and underscores.'
+        )
     return value
 
 
@@ -131,35 +145,20 @@ class WechatCallbackResponseSerializer(serializers.Serializer):
 class RegisterSerializer(serializers.Serializer):
     wechat_session_id = serializers.CharField(max_length=64)
     invite_code = serializers.CharField(max_length=20)
-    username = serializers.CharField(max_length=150)
+    username = serializers.CharField(max_length=150, validators=[validate_account_username])
     password = serializers.CharField(write_only=True, min_length=8, validators=[validate_account_password])
     phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
     email = serializers.EmailField(required=False, allow_blank=True)
     department = serializers.CharField(max_length=100, required=False, allow_blank=True)
-
-    def validate_username(self, value):
-        if not value.isalnum() and '_' not in value:
-            raise serializers.ValidationError(
-                'Username can only contain letters, numbers, and underscores.'
-            )
-        return value
 
 
 class SimpleRegisterSerializer(serializers.Serializer):
     invite_code = serializers.CharField(max_length=20)
-    username = serializers.CharField(max_length=150)
+    username = serializers.CharField(max_length=150, validators=[validate_account_username])
     password = serializers.CharField(write_only=True, min_length=8, validators=[validate_account_password])
     phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
     email = serializers.EmailField(required=False, allow_blank=True)
     department = serializers.CharField(max_length=100, required=False, allow_blank=True)
-
-    def validate_username(self, value):
-        import re
-        if not re.match(r'^[\w\u4e00-\u9fa5]+$', value):
-            raise serializers.ValidationError(
-                'Username can only contain letters, numbers, underscores, and Chinese characters.'
-            )
-        return value
 
 
 class RegisterResponseSerializer(serializers.Serializer):
@@ -196,20 +195,12 @@ class UserResetPasswordResponseSerializer(serializers.Serializer):
 
 
 class UserCreateSerializer(serializers.Serializer):
-    username = serializers.CharField(max_length=150)
+    username = serializers.CharField(max_length=150, validators=[validate_account_username])
     password = serializers.CharField(write_only=True, min_length=8, validators=[validate_account_password])
     role = serializers.ChoiceField(choices=UserRole.choices, default=UserRole.READ_ONLY_USER)
     phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
     email = serializers.EmailField(required=False, allow_blank=True)
     department = serializers.CharField(max_length=100, required=False, allow_blank=True)
-
-    def validate_username(self, value):
-        import re
-        if not re.match(r'^[\w\u4e00-\u9fa5]+$', value):
-            raise serializers.ValidationError(
-                'Username can only contain letters, numbers, underscores, and Chinese characters.'
-            )
-        return value
 
 
 class UserCreateResponseSerializer(serializers.Serializer):
