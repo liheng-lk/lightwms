@@ -49,6 +49,56 @@ class TestSensitiveChangesInvalidateSessions:
         user.refresh_from_db()
         assert user.tokens_invalid_before is not None
 
+    @pytest.mark.parametrize(
+        ('role', 'username'),
+        [
+            (UserRole.SUPER_ADMIN, 'self_password_admin'),
+            (UserRole.ITEM_MANAGER, 'self_password_manager'),
+            (UserRole.READ_ONLY_USER, 'self_password_user'),
+        ],
+    )
+    def test_every_authenticated_role_can_change_own_password(
+        self, api_client, role, username
+    ):
+        account = User.objects.create_user(
+            username=username,
+            password='StrongPass123!',
+            role=role,
+        )
+        api_client.force_authenticate(user=account)
+
+        response = api_client.post(
+            '/api/v1/users/me/change-password/',
+            {
+                'old_password': 'StrongPass123!',
+                'new_password': 'ChangedBySelf456!',
+            },
+            format='json',
+        )
+
+        assert response.status_code == 200
+        account.refresh_from_db()
+        assert account.check_password('ChangedBySelf456!')
+        assert account.tokens_invalid_before is not None
+        assert account.must_change_password is False
+
+    def test_self_password_change_rejects_wrong_current_password(self, api_client, user):
+        api_client.force_authenticate(user=user)
+
+        response = api_client.post(
+            '/api/v1/users/me/change-password/',
+            {
+                'old_password': 'WrongCurrentPassword!',
+                'new_password': 'ChangedBySelf456!',
+            },
+            format='json',
+        )
+
+        assert response.status_code == 400
+        user.refresh_from_db()
+        assert user.check_password('StrongPass123!')
+        assert user.tokens_invalid_before is None
+
     def test_self_password_change_invalidates_existing_sessions(self, api_client, user):
         api_client.force_authenticate(user=user)
         response = api_client.post(
