@@ -35,7 +35,7 @@ cp docker/.env.example .env
 ```text
 SECRET_KEY=<随机长密钥>
 POSTGRES_PASSWORD=<高强度密码>
-LIGHTWMS_VERSION=1.2.1
+LIGHTWMS_VERSION=1.2.2
 HTTP_PORT=3000
 SECURE_COOKIES=false
 ```
@@ -98,7 +98,7 @@ http://192.168.1.20:18080
 
 ```bash
 # 修改 .env，例如：
-LIGHTWMS_VERSION=1.2.1
+LIGHTWMS_VERSION=1.2.2
 
 # 拉取固定版本并重建容器
 docker compose -f docker/compose/docker-compose.dockerhub.yml pull
@@ -106,6 +106,19 @@ docker compose -f docker/compose/docker-compose.dockerhub.yml up -d
 ```
 
 生产环境建议固定版本号，不建议长期跟随 `latest`。
+
+### 更新检测
+
+超级管理员登录后，系统每 30 分钟检查一次 DockerHub（也可在右上角用户菜单点击“检查更新”立即检查）。满足以下任一条件会在顶栏显示更新提示，点开即可看到升级命令：
+
+- DockerHub 上有比当前更高的版本号（前端、后端任一镜像都算）；
+- 当前跟踪的镜像标签（`LIGHTWMS_VERSION`，默认 `latest`）在本镜像构建 30 分钟之后被重新推送过，即“没改版本号、重新发布了镜像”。
+
+第二种检测依赖镜像里的构建时间，因此发布镜像时请使用 GitHub Actions 或 `docker/scripts/build-images.sh`，它们会自动写入 `APP_VERSION`、`BUILD_TIME`；直接手写 `docker build` 构建的镜像只能按版本号判断。
+
+发布新版本的推荐流程：修改仓库根目录 `VERSION` → 提交信息以 `release:` 开头推送到 main → Actions 自动构建并同时推送 `x.y.z` 与 `latest`。
+
+如需无人值守自动升级，可额外运行 [Watchtower](https://containrrr.dev/watchtower/) 监控 `lightwms-backend` 与 `lightwms-frontend` 两个容器；自动升级前请确保已配置定时备份。
 
 ## 常用命令
 

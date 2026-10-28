@@ -7,6 +7,10 @@ set -e
 # 配置
 DOCKER_REGISTRY="${DOCKER_REGISTRY:-}"  # 例如: yourusername/
 VERSION="${VERSION:-latest}"
+# 写进镜像供更新检查使用：语义化版本取自仓库根目录 VERSION 文件
+APP_VERSION="$(tr -d '[:space:]' < VERSION 2>/dev/null || echo unknown)"
+BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+APP_REVISION="$(git rev-parse HEAD 2>/dev/null || echo '')"
 BACKEND_IMAGE="${DOCKER_REGISTRY}lightwms-backend:${VERSION}"
 FRONTEND_IMAGE="${DOCKER_REGISTRY}lightwms-frontend:${VERSION}"
 
@@ -50,7 +54,11 @@ show_help() {
 # 构建后端镜像
 build_backend() {
     echo_info "构建后端镜像: ${BACKEND_IMAGE}"
-    docker build -t "${BACKEND_IMAGE}" -f backend/Dockerfile backend/
+    docker build \
+        --build-arg APP_VERSION="${APP_VERSION}" \
+        --build-arg BUILD_TIME="${BUILD_TIME}" \
+        --build-arg APP_REVISION="${APP_REVISION}" \
+        -t "${BACKEND_IMAGE}" -f backend/Dockerfile backend/
     echo_info "后端镜像构建完成"
 }
 
@@ -70,14 +78,31 @@ push_images() {
     
     echo_info "推送镜像到 Docker Hub..."
     
+    # 推送语义化版本时同时更新 :latest，否则跟踪 latest 的部署永远拉不到新镜像
+    local also_latest=false
+    if [[ "$VERSION" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        also_latest=true
+        if [ "${VERSION#v}" != "$APP_VERSION" ]; then
+            echo_warn "标签 ${VERSION} 与 VERSION 文件 (${APP_VERSION}) 不一致，系统内显示的版本号会以 VERSION 文件为准"
+        fi
+    fi
+
     if [ "$BUILD_BACKEND" = true ]; then
         echo_info "推送后端镜像: ${BACKEND_IMAGE}"
         docker push "${BACKEND_IMAGE}"
+        if [ "$also_latest" = true ]; then
+            docker tag "${BACKEND_IMAGE}" "${DOCKER_REGISTRY}lightwms-backend:latest"
+            docker push "${DOCKER_REGISTRY}lightwms-backend:latest"
+        fi
     fi
     
     if [ "$BUILD_FRONTEND" = true ]; then
         echo_info "推送前端镜像: ${FRONTEND_IMAGE}"
         docker push "${FRONTEND_IMAGE}"
+        if [ "$also_latest" = true ]; then
+            docker tag "${FRONTEND_IMAGE}" "${DOCKER_REGISTRY}lightwms-frontend:latest"
+            docker push "${DOCKER_REGISTRY}lightwms-frontend:latest"
+        fi
     fi
     
     echo_info "镜像推送完成"

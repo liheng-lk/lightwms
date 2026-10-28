@@ -18,6 +18,7 @@ from .serializers import (
     ReturnRequestSerializer,
     TakeRecordSerializer,
     ReplenishRecordSerializer,
+    RecentBorrowerSerializer,
 )
 from .services import BorrowService, ConsumableService
 from .services.quantity_borrow_service import QuantityBorrowService
@@ -168,6 +169,19 @@ class BorrowRecordListView(BaseBorrowRecordListView):
 
 class RecentBorrowersView(BaseRecentBorrowersView):
     permission_classes = [IsItemManagerOrSuperAdmin]
+
+    def get(self, request):
+        try:
+            limit = min(max(1, int(request.query_params.get('limit', '10'))), 100)
+        except (TypeError, ValueError):
+            limit = 10
+        # Managers operate on all inventory, so suggest borrowers globally
+        # rather than only those of items the manager happens to own.
+        borrowers = BorrowService.get_recent_borrowers(owner=None, limit=limit)
+        return Response(
+            RecentBorrowerSerializer(borrowers, many=True).data,
+            status=status.HTTP_200_OK,
+        )
 
 
 class ItemTakeView(BaseItemTakeView):

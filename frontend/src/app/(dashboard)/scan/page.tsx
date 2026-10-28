@@ -31,6 +31,15 @@ export default function ScanPage() {
   const lastScannedRef = useRef<string | null>(null);
   const scanTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Camera needs HTTPS/localhost. On a plain-HTTP LAN deployment open the
+  // manual tab directly (a USB/Bluetooth scanner gun types into it).
+  useEffect(() => {
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+      setInputMode('manual');
+      setScannerEnabled(false);
+    }
+  }, []);
+
   useEffect(() => {
     return () => {
       if (scanTimeoutRef.current) {

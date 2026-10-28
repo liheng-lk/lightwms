@@ -356,6 +356,13 @@ class ItemService:
                     details={'quantity': data.quantity, 'borrowed': borrowed}
                 )
             item.quantity = data.quantity
+            # Re-derive status inside the same locked transaction; doing it
+            # afterwards in the view raced with concurrent borrows.
+            item.status = (
+                ItemStatus.BORROWED
+                if data.quantity - borrowed == 0
+                else ItemStatus.AVAILABLE
+            )
         
         try:
             item.save()

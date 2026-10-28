@@ -1,4 +1,5 @@
 """Strict query-contract wrappers for operation ledger lists."""
+from django.utils import timezone
 from rest_framework import serializers, status
 from rest_framework.response import Response
 
@@ -35,7 +36,12 @@ class DateRangeQuerySerializer(serializers.Serializer):
 class BorrowRecordQuerySerializer(DateRangeQuerySerializer):
     item = serializers.IntegerField(required=False, min_value=1, max_value=MAX_BIGINT_ID)
     borrower = serializers.IntegerField(required=False, min_value=1, max_value=MAX_BIGINT_ID)
-    status = serializers.ChoiceField(required=False, choices=BorrowStatus.choices)
+    # 'overdue' is a computed status (active and past the expected date). The
+    # UI has always offered it, but the stored-status choices rejected it.
+    status = serializers.ChoiceField(
+        required=False,
+        choices=list(BorrowStatus.choices) + [('overdue', 'Overdue')],
+    )
 
 
 class TakeRecordQuerySerializer(DateRangeQuerySerializer):
@@ -79,15 +85,20 @@ class BorrowRecordListView(BaseBorrowRecordListView):
         if is_read_only_user(request.user):
             borrower_id = request.user.id
 
+        requested_status = data.get('status')
+        overdue = requested_status == 'overdue'
+
         records = BorrowService.list_records(
             item_id=data.get('item'),
             borrower_id=borrower_id,
-            status=data.get('status'),
+            status=BorrowStatus.ACTIVE if overdue else requested_status,
             owner_id=None,
             visible_borrower_id=visible_borrower_id,
             start_date=data.get('start_date'),
             end_date=data.get('end_date'),
         )
+        if overdue:
+            records = records.filter(expected_return_date__lt=timezone.localdate())
         return _paginate(request, records, BorrowRecordSerializer)
 
 

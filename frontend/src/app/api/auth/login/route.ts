@@ -19,7 +19,11 @@ export async function POST(request: NextRequest) {
     
     const response = await fetch(`${BACKEND_URL}/api/v1/auth/login/`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        // 让登录日志记录真实的浏览器 UA，而不是 Node fetch 的 UA
+        'User-Agent': request.headers.get('user-agent') || '',
+      },
       body: JSON.stringify(body),
     });
     

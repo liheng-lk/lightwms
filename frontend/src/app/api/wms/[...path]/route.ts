@@ -17,6 +17,10 @@ const FILTERED_HEADERS = new Set([
   'upgrade',
   'host',
   'cookie',  // 不转发 cookie 给 Django，用 Authorization header
+  // 客户端可以随意伪造这些头；若后端配置了 TRUSTED_PROXY_CIDRS 信任本容器，
+  // 原样转发会让登录限流和日志里的 IP 被伪造。真实 IP 应由最外层反向代理设置。
+  'x-real-ip',
+  'x-forwarded-for',
 ]);
 
 // 安全 JSON 解析：避免非 JSON 响应导致崩溃

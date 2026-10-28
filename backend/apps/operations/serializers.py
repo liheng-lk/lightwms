@@ -57,7 +57,7 @@ class ReturnRequestSerializer(serializers.Serializer):
     """
     borrow_record_id = serializers.IntegerField(required=False, min_value=1)
     return_notes = serializers.CharField(required=False, allow_blank=True, default='')
-    condition = serializers.CharField(required=False, allow_blank=True, default='')
+    condition = serializers.CharField(required=False, allow_blank=True, default='', max_length=200)
 
 
 class RecentBorrowerSerializer(serializers.Serializer):

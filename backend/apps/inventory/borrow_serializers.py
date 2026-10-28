@@ -127,12 +127,30 @@ class BorrowAwareItemSerializer(ActiveBorrowMixin, ItemSerializer):
 class BorrowAwareBarcodeSerializer(ActiveBorrowMixin, ItemByBarcodeSerializer):
     """Scanner response with the same quantity-aware borrow state as detail."""
     active_borrows = serializers.SerializerMethodField()
-    available_quantity = serializers.IntegerField(read_only=True)
-    borrowed_quantity = serializers.IntegerField(read_only=True)
+    available_quantity = serializers.SerializerMethodField()
+    borrowed_quantity = serializers.SerializerMethodField()
+    current_borrow_record_id = serializers.SerializerMethodField()
 
     class Meta(ItemByBarcodeSerializer.Meta):
         fields = list(ItemByBarcodeSerializer.Meta.fields) + [
             'available_quantity',
             'borrowed_quantity',
             'active_borrows',
+            'current_borrow_record_id',
         ]
+
+    def get_borrowed_quantity(self, obj):
+        if not obj.is_reusable:
+            return 0
+        return sum(record.quantity for record in self._all_active_records(obj))
+
+    def get_available_quantity(self, obj):
+        if obj.is_reusable:
+            return obj.quantity - self.get_borrowed_quantity(obj)
+        return obj.quantity
+
+    def get_current_borrow_record_id(self, obj):
+        # Only set when exactly one *visible* record exists; otherwise the
+        # client must let the user pick from ``active_borrows``.
+        record = self._single_active_record(obj)
+        return record.id if record else None

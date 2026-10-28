@@ -13,6 +13,7 @@ import { Download, Printer, Loader2 } from 'lucide-react';
 import { useGenerateBarcode } from '@/lib/hooks/use-items';
 import type { GenerateBarcodeResponse } from '@/lib/api/items';
 import type { Item } from '@/lib/types';
+import { escapeHtml } from '@/lib/html';
 
 interface BarcodeModalProps {
   item: Item;
@@ -60,8 +61,8 @@ export function BarcodeModal({ item, open, onOpenChange, onSuccess }: BarcodeMod
     if (!barcodeImage) return;
     
     const link = document.createElement('a');
-    link.href = `data:image/png;base64,${barcodeImage}`;
-    link.download = `barcode-${item.sku}-${barcodeData?.barcode}.png`;
+    link.href = `data:image/png;base64,${escapeHtml(barcodeImage)}`;
+    link.download = `barcode-${escapeHtml(item.sku)}-${escapeHtml(barcodeData?.barcode)}.png`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -78,7 +79,7 @@ export function BarcodeModal({ item, open, onOpenChange, onSuccess }: BarcodeMod
         <!DOCTYPE html>
         <html>
           <head>
-            <title>打印条码 - ${item.sku}</title>
+            <title>打印条码 - ${escapeHtml(item.sku)}</title>
             <style>
               body {
                 font-family: Arial, sans-serif;
@@ -119,10 +120,10 @@ export function BarcodeModal({ item, open, onOpenChange, onSuccess }: BarcodeMod
           </head>
           <body>
             <div class="container">
-              <img src="data:image/png;base64,${barcodeImage}" class="barcode-image" alt="条码" />
-              <div class="barcode-text">${barcodeData?.barcode}</div>
-              <div class="item-name">${item.name}</div>
-              <div class="item-sku">SKU: ${item.sku}</div>
+              <img src="data:image/png;base64,${escapeHtml(barcodeImage)}" class="barcode-image" alt="条码" />
+              <div class="barcode-text">${escapeHtml(barcodeData?.barcode)}</div>
+              <div class="item-name">${escapeHtml(item.name)}</div>
+              <div class="item-sku">SKU: ${escapeHtml(item.sku)}</div>
             </div>
             <script>
               window.onload = function() {

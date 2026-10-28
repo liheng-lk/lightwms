@@ -27,7 +27,7 @@ cp docker/.env.example .env
 # 必须修改 SECRET_KEY 和 POSTGRES_PASSWORD
 
 # 3. 推荐固定正式版本
-# .env 中设置：LIGHTWMS_VERSION=1.2.1
+# .env 中设置：LIGHTWMS_VERSION=1.2.2
 
 # 4. 启动
 docker compose -f docker/compose/docker-compose.dockerhub.yml pull
@@ -73,10 +73,10 @@ SECURE_COOKIES=true
 
 | 服务 | 正式版本 | 最新版本 |
 |---|---|---|
-| Backend | `liheng6668/lightwms-backend:1.2.1` | `liheng6668/lightwms-backend:latest` |
-| Frontend | `liheng6668/lightwms-frontend:1.2.1` | `liheng6668/lightwms-frontend:latest` |
+| Backend | `liheng6668/lightwms-backend:1.2.2` | `liheng6668/lightwms-backend:latest` |
+| Frontend | `liheng6668/lightwms-frontend:1.2.2` | `liheng6668/lightwms-frontend:latest` |
 
-生产环境建议固定 `LIGHTWMS_VERSION=1.2.1`，确认升级后再切换版本。
+生产环境建议固定 `LIGHTWMS_VERSION=1.2.2`，确认升级后再切换版本。
 
 ## 功能
 

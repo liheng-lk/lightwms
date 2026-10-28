@@ -22,6 +22,8 @@ import {
 import { Copy, Check } from 'lucide-react';
 import { useCreateInviteCode } from '@/lib/hooks/use-invite-codes';
 import type { InviteCode, UserRole } from '@/lib/types';
+import { copyText } from '@/lib/clipboard';
+import { toast } from 'sonner';
 
 interface InviteCodeFormProps {
   open: boolean;
@@ -62,12 +64,31 @@ export function InviteCodeForm({ open, onOpenChange, onSuccess }: InviteCodeForm
     );
   };
 
+  const [copiedCode, setCopiedCode] = useState(false);
+
+  const registerUrlFor = (code: string) =>
+    `${window.location.origin}/register?code=${encodeURIComponent(code)}`;
+
   const handleCopyCode = async () => {
     if (!createdCode) return;
-    const registerUrl = `${window.location.origin}/register?code=${createdCode.code}`;
-    await navigator.clipboard.writeText(registerUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    if (await copyText(registerUrlFor(createdCode.code))) {
+      setCopied(true);
+      toast.success('注册链接已复制');
+      setTimeout(() => setCopied(false), 2000);
+    } else {
+      toast.error('浏览器不允许自动复制，请长按或手动选中链接复制');
+    }
+  };
+
+  const handleCopyCodeOnly = async () => {
+    if (!createdCode) return;
+    if (await copyText(createdCode.code)) {
+      setCopiedCode(true);
+      toast.success('邀请码已复制');
+      setTimeout(() => setCopiedCode(false), 2000);
+    } else {
+      toast.error('浏览器不允许自动复制，请长按或手动选中邀请码复制');
+    }
   };
 
   const handleClose = () => {
@@ -76,6 +97,7 @@ export function InviteCodeForm({ open, onOpenChange, onSuccess }: InviteCodeForm
     setExpiresAt('');
     setCreatedCode(null);
     setCopied(false);
+    setCopiedCode(false);
     onOpenChange(false);
   };
 
@@ -91,14 +113,17 @@ export function InviteCodeForm({ open, onOpenChange, onSuccess }: InviteCodeForm
             <div>
               <Label className="text-sm text-muted-foreground">邀请码</Label>
               <div className="flex items-center gap-2 mt-1 p-3 bg-muted rounded-lg">
-                <code className="flex-1 text-lg font-mono">{createdCode.code}</code>
+                <code className="flex-1 text-lg font-mono select-all">{createdCode.code}</code>
+                <Button variant="outline" size="icon" onClick={handleCopyCodeOnly} title="复制邀请码">
+                  {copiedCode ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                </Button>
               </div>
             </div>
             <div>
               <Label className="text-sm text-muted-foreground">注册链接</Label>
               <div className="flex items-center gap-2 mt-1 p-3 bg-muted rounded-lg">
-                <code className="flex-1 text-sm font-mono break-all">
-                  {window.location.origin}/register?code={createdCode.code}
+                <code className="flex-1 text-sm font-mono break-all select-all">
+                  {registerUrlFor(createdCode.code)}
                 </code>
                 <Button variant="outline" size="icon" onClick={handleCopyCode} title="复制链接">
                   {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}

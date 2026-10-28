@@ -37,6 +37,8 @@ import { UpdateRoleDialog } from '@/components/users/update-role-dialog';
 import { PageHelp } from '@/components/ui/help-tooltip';
 import { useUsers, useResetPassword } from '@/lib/hooks/use-users';
 import type { User, UserRole } from '@/lib/types';
+import { copyText } from '@/lib/clipboard';
+import { toast } from 'sonner';
 
 const PAGE_SIZES = [10, 20, 50];
 
@@ -152,9 +154,12 @@ export default function UsersPage() {
 
   const handleCopyPassword = async () => {
     if (temporaryPassword) {
-      await navigator.clipboard.writeText(temporaryPassword);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      if (await copyText(temporaryPassword)) {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } else {
+        toast.error('浏览器不允许自动复制，请手动选中临时密码复制');
+      }
     }
   };
 
@@ -293,7 +298,7 @@ export default function UsersPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="flex items-center gap-2 p-4 bg-muted rounded-lg">
-            <code className="flex-1 text-lg font-mono">{temporaryPassword}</code>
+            <code className="flex-1 text-lg font-mono select-all">{temporaryPassword}</code>
             <Button
               variant="outline"
               size="icon"

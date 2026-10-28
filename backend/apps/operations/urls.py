@@ -3,7 +3,7 @@ URL configuration for operations app.
 """
 from django.urls import path
 
-from .views import (
+from .borrow_ledger_views import (
     BorrowRecordDeleteView,
     BorrowRecordBatchDeleteView,
 )

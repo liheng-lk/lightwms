@@ -24,6 +24,7 @@ import {
 import { usePermissions } from '@/lib/hooks/use-permissions';
 import { useAuth } from '@/providers/auth-provider';
 import type { Item } from '@/lib/types';
+import { escapeHtml } from '@/lib/html';
 
 interface ItemActionsProps {
   item: Item;
@@ -78,7 +79,7 @@ export function ItemActions({
       printWindow.document.write(`
         <html>
           <head>
-            <title>打印条码 - ${item.sku}</title>
+            <title>打印条码 - ${escapeHtml(item.sku)}</title>
             <style>
               body { font-family: monospace; text-align: center; padding: 20px; }
               .sku { font-size: 24px; font-weight: bold; }
@@ -87,9 +88,9 @@ export function ItemActions({
             </style>
           </head>
           <body>
-            <div class="sku">${item.sku}</div>
-            ${item.barcode ? `<div class="barcode">${item.barcode}</div>` : ''}
-            <div class="name">${item.name}</div>
+            <div class="sku">${escapeHtml(item.sku)}</div>
+            ${item.barcode ? `<div class="barcode">${escapeHtml(item.barcode)}</div>` : ''}
+            <div class="name">${escapeHtml(item.name)}</div>
           </body>
         </html>
       `);

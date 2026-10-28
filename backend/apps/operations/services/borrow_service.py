@@ -457,39 +457,37 @@ class BorrowService:
     @classmethod
     def get_recent_borrowers(
         cls,
-        owner: User,
+        owner: Optional[User] = None,
         limit: int = 10
     ) -> List[User]:
         """
-        Get recent unique borrowers for items owned by the user.
-        
-        Returns the last N unique users who borrowed items from this owner,
-        ordered by most recent borrow first.
-        
-        Args:
-            owner: Owner user
-            limit: Maximum number of borrowers to return (default 10)
-            
-        Returns:
-            List of User instances
+        Get recent unique active borrowers, most recent first.
+
+        ``owner=None`` returns borrowers across all inventory, which matches
+        the current role model (Item.owner is responsibility metadata, not an
+        authorization boundary). Passing an owner keeps the old per-owner
+        behaviour.
+
+        Uses a single GROUP BY query instead of iterating every borrow record
+        in Python.
         """
-        # Get recent borrow records for owner's items
-        recent_borrows = BorrowRecord.objects.filter(
-            item__owner_id=owner.id
-        ).select_related('borrower').order_by('-created_at')
-        
-        # Collect unique borrowers
-        seen_ids = set()
-        borrowers = []
-        
-        for record in recent_borrows:
-            if record.borrower_id not in seen_ids:
-                seen_ids.add(record.borrower_id)
-                borrowers.append(record.borrower)
-                if len(borrowers) >= limit:
-                    break
-        
-        return borrowers
+        from django.db.models import Max
+
+        qs = BorrowRecord.objects.all()
+        if owner is not None:
+            qs = qs.filter(item__owner_id=owner.id)
+
+        rows = (
+            qs.values('borrower_id')
+            .annotate(last_borrowed=Max('created_at'))
+            .order_by('-last_borrowed')[:limit]
+        )
+        ordered_ids = [row['borrower_id'] for row in rows]
+        users = {
+            user.id: user
+            for user in User.objects.filter(id__in=ordered_ids, is_active=True)
+        }
+        return [users[user_id] for user_id in ordered_ids if user_id in users]
     
     @classmethod
     def get_active_borrow(cls, item_id: int) -> Optional[BorrowRecord]:

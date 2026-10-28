@@ -31,6 +31,7 @@ jobs:
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
       - name: Log in to DockerHub
         env:
@@ -44,9 +45,12 @@ jobs:
       - name: Build backend image
         env:
           VERSION: ${{ steps.version.outputs.version }}
+          BUILD_TIME: ${{ steps.version.outputs.build_time }}
         run: |
           docker build --pull \
             --build-arg APP_VERSION="$VERSION" \
+            --build-arg BUILD_TIME="$BUILD_TIME" \
+            --build-arg APP_REVISION="${GITHUB_SHA}" \
             --label org.opencontainers.image.source="https://github.com/${GITHUB_REPOSITORY}" \
             --label org.opencontainers.image.revision="${GITHUB_SHA}" \
             --label org.opencontainers.image.version="$VERSION" \

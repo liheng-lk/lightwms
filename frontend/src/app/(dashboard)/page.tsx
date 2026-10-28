@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   ArrowRight,
   ClipboardList,
+  Clock,
   Package,
   PackageMinus,
   ScanBarcode,
@@ -16,6 +17,7 @@ import { Button } from '@/components/ui/button';
 interface DashboardMetrics {
   items: number | null;
   activeBorrows: number | null;
+  overdueBorrows: number | null;
   outOfStock: number | null;
   todayTakes: number | null;
 }
@@ -28,6 +30,7 @@ interface PaginatedResponse {
 const initialMetrics: DashboardMetrics = {
   items: null,
   activeBorrows: null,
+  overdueBorrows: null,
   outOfStock: null,
   todayTakes: null,
 };
@@ -70,6 +73,7 @@ export default function DashboardPage() {
         fetchCount('/api/wms/borrow-records/?status=active&page_size=1'),
         fetchCount('/api/wms/items/?type=consumable&status=out_of_stock&page_size=1'),
         fetchCount(`/api/wms/take-records/?start_date=${today}&end_date=${today}&page_size=1`),
+        fetchCount('/api/wms/borrow-records/?status=overdue&page_size=1'),
       ]);
 
       if (cancelled) return;
@@ -82,6 +86,7 @@ export default function DashboardPage() {
         activeBorrows: value(1),
         outOfStock: value(2),
         todayTakes: value(3),
+        overdueBorrows: value(4),
       });
       setHasPartialError(requests.some((result) => result.status === 'rejected'));
       setLoading(false);
@@ -107,6 +112,13 @@ export default function DashboardPage() {
       description: '尚未完成归还的借用记录',
       href: '/borrow-records?status=active',
       icon: ClipboardList,
+    },
+    {
+      label: '逾期未还',
+      value: metrics.overdueBorrows,
+      description: '已超过预计归还日期，需要催还',
+      href: '/borrow-records?status=overdue',
+      icon: Clock,
     },
     {
       label: '缺货耗材',
@@ -151,7 +163,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {metricCards.map((metric) => {
           const Icon = metric.icon;
           return (

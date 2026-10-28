@@ -10,6 +10,9 @@ from apps.audit.models import AuditAction, AuditLog, TargetType
 from apps.inventory.models import Item, ItemStatus, ItemType
 from apps.users.models import User, UserRole
 from core.exceptions import BusinessConflictError
+from apps.operations.models import ReplenishRecord, TakeRecord
+
+IMPORT_ADJUSTMENT_NOTE = '批量导入数量调整'
 
 from .import_service import ImportError, ImportResult, ImportService
 
@@ -99,6 +102,14 @@ class HardenedImportService(ImportService):
                                 raise ValueError(
                                     f'Existing item type is {item.type}; import row specifies {row_data["type"]}.'
                                 )
+                            if not item.is_active:
+                                raise ValueError(
+                                    'Item is deactivated; reactivate it before updating via import.'
+                                )
+                            if 'owner' in row_data and row_data['owner'].role not in [
+                                UserRole.SUPER_ADMIN, UserRole.ITEM_MANAGER,
+                            ]:
+                                raise ValueError('Inventory owner must be a super admin or item manager.')
 
                             item.name = row_data['name']
                             item.location = row_data['location']
@@ -130,6 +141,25 @@ class HardenedImportService(ImportService):
                                         else ItemStatus.AVAILABLE
                                     )
                                 else:
+                                    # Consumable stock is ledger-driven: write the
+                                    # delta as a replenish/take record so that
+                                    # opening stock + replenish - take == quantity.
+                                    delta = quantity - (item.quantity or 0)
+                                    if delta > 0:
+                                        ReplenishRecord.objects.create(
+                                            item=item,
+                                            operator=operator,
+                                            quantity=delta,
+                                            notes=IMPORT_ADJUSTMENT_NOTE,
+                                        )
+                                    elif delta < 0:
+                                        TakeRecord.objects.create(
+                                            item=item,
+                                            taker=operator,
+                                            operator=operator,
+                                            quantity=-delta,
+                                            notes=IMPORT_ADJUSTMENT_NOTE,
+                                        )
                                     item.quantity = quantity
                                     item.status = (
                                         ItemStatus.IN_STOCK

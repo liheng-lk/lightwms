@@ -356,3 +356,30 @@ class TestBorrowRecordComputedStatus:
             actual_return_datetime=timezone.now(), status=BorrowStatus.RETURNED,
         )
         assert record.computed_status == 'returned'
+
+
+@pytest.mark.django_db
+def test_overdue_filter_returns_only_active_past_due_records(item_manager, reusable_item, borrower_user):
+    from datetime import timedelta
+    from django.utils import timezone
+    from apps.operations.models import BorrowRecord, BorrowStatus
+
+    reusable_item.quantity = 3
+    reusable_item.save(update_fields=['quantity'])
+    today = timezone.localdate()
+    overdue = BorrowRecord.objects.create(
+        item=reusable_item, borrower=borrower_user, operator=item_manager,
+        expected_return_date=today - timedelta(days=2), status=BorrowStatus.ACTIVE,
+    )
+    BorrowRecord.objects.create(
+        item=reusable_item, borrower=borrower_user, operator=item_manager,
+        expected_return_date=today + timedelta(days=2), status=BorrowStatus.ACTIVE,
+    )
+
+    client = APIClient()
+    client.force_authenticate(user=item_manager)
+    response = client.get('/api/v1/borrow-records/', {'status': 'overdue'})
+
+    assert response.status_code == 200
+    ids = [row['id'] for row in response.data['results']]
+    assert ids == [overdue.id]

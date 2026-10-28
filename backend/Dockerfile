@@ -27,13 +27,19 @@ RUN pip wheel --no-cache-dir --wheel-dir /app/wheels -r requirements.txt
 FROM python:3.11-slim-bookworm AS production
 
 ARG APP_VERSION=unknown
+# UTC ISO-8601 build time and git commit; used by the update checker to spot a
+# re-published image even when the version number was not bumped.
+ARG BUILD_TIME=
+ARG APP_REVISION=
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     DJANGO_SETTINGS_MODULE=config.settings.production \
     APP_HOME=/app \
-    APP_VERSION=${APP_VERSION}
+    APP_VERSION=${APP_VERSION} \
+    BUILD_TIME=${BUILD_TIME} \
+    APP_REVISION=${APP_REVISION}
 
 WORKDIR $APP_HOME
 

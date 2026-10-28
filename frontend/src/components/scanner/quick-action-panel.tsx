@@ -33,6 +33,7 @@ import { Badge } from '@/components/ui/badge';
 import { UserSelect } from '@/components/operations/user-select';
 import { useQuickAction, type ActionResult } from '@/lib/hooks/use-quick-action';
 import { itemStatusConfig, itemTypeConfig } from '@/lib/types/ui';
+import { usePermissions } from '@/lib/hooks/use-permissions';
 
 /**
  * Props for QuickActionPanel component
@@ -69,6 +70,7 @@ const borrowSchema = z.object({
       today.setHours(0, 0, 0, 0);
       return selected >= today;
     }, '预计归还日期不能早于今天'),
+  quantity: z.number({ error: '请输入数量' }).int().min(1, '数量至少为 1'),
   notes: z.string().optional(),
 });
 
@@ -120,9 +122,18 @@ type ActionType = 'borrow' | 'return' | 'take' | 'replenish' | null;
  */
 export function getActionButtons(
   type: 'reusable' | 'consumable',
-  status: 'available' | 'borrowed' | 'in_stock' | 'out_of_stock'
+  status: 'available' | 'borrowed' | 'in_stock' | 'out_of_stock',
+  quantities?: { available?: number | null; borrowed?: number | null }
 ): ActionType[] {
   if (type === 'reusable') {
+    // Item.status cannot express partial borrowing (quantity 3, 1 borrowed is
+    // still "available"), so prefer the quantity fields when present.
+    if (quantities && quantities.available != null && quantities.borrowed != null) {
+      const actions: ActionType[] = [];
+      if (quantities.available > 0) actions.push('borrow');
+      if (quantities.borrowed > 0) actions.push('return');
+      return actions;
+    }
     if (status === 'available') {
       return ['borrow'];
     }
@@ -172,6 +183,8 @@ export function QuickActionPanel({
 
   const [activeAction, setActiveAction] = useState<ActionType>(null);
   const [lastResult, setLastResult] = useState<ActionResult | null>(null);
+  const [returnRecordId, setReturnRecordId] = useState<number | null>(null);
+  const { canManage } = usePermissions();
 
   // Lookup item when barcode changes
   const handleLookup = useCallback(async () => {
@@ -191,8 +204,13 @@ export function QuickActionPanel({
 
   // Borrow form
   const borrowForm = useForm<BorrowFormData>({
-    resolver: zodResolver(borrowSchema),
-    defaultValues: { notes: '' },
+    resolver: zodResolver(
+      borrowSchema.refine(
+        (data) => !item || data.quantity <= (item.available_quantity ?? item.quantity ?? 1),
+        { message: '数量不能超过可借数量', path: ['quantity'] }
+      )
+    ),
+    defaultValues: { quantity: 1, notes: '' },
   });
 
   // Take form with dynamic max validation
@@ -221,7 +239,26 @@ export function QuickActionPanel({
   // Get available actions based on item type and status
   const availableActions = useMemo(() => {
     if (!item) return [];
-    return getActionButtons(item.type, item.status);
+    const actions = getActionButtons(item.type, item.status, {
+      available: item.available_quantity,
+      borrowed: item.borrowed_quantity,
+    });
+    if (canManage) return actions;
+    // Ordinary users can only return their own borrows; the backend already
+    // limits active_borrows to the requester's records for this role.
+    return actions.filter(
+      (action) => action === 'return' && (item.active_borrows?.length ?? 0) > 0
+    );
+  }, [item, canManage]);
+
+  const activeBorrows = item?.active_borrows ?? [];
+
+  // Pre-select when only one visible record exists; force a choice otherwise.
+  useEffect(() => {
+    setReturnRecordId(
+      item?.current_borrow_record_id ??
+        (item?.active_borrows?.length === 1 ? item.active_borrows[0].id : null)
+    );
   }, [item]);
 
   // Handle action completion
@@ -231,7 +268,7 @@ export function QuickActionPanel({
     onActionComplete?.(result);
     
     // Reset forms
-    borrowForm.reset();
+    borrowForm.reset({ quantity: 1, notes: '' });
     takeForm.reset({ quantity: 1, notes: '' });
     replenishForm.reset({ quantity: 1, notes: '' });
     returnForm.reset();
@@ -242,14 +279,19 @@ export function QuickActionPanel({
     const result = await executeBorrow(
       data.borrower,
       data.expected_return_date,
-      data.notes
+      data.notes,
+      data.quantity
     );
     handleActionComplete(result);
   };
 
   // Handle return submit
   const handleReturnSubmit = async (data: ReturnFormData) => {
-    const result = await executeReturn(data.return_notes);
+    if (activeBorrows.length > 1 && !returnRecordId) {
+      setLastResult({ success: false, action: 'return', message: '请选择要归还的借用记录' });
+      return;
+    }
+    const result = await executeReturn(data.return_notes, returnRecordId);
     handleActionComplete(result);
   };
 
@@ -377,6 +419,15 @@ export function QuickActionPanel({
             <User className="h-4 w-4" />
             <span className="truncate">{item.owner_username || '未知'}</span>
           </div>
+          {item.type === 'reusable' && item.available_quantity != null && (
+            <div className="col-span-2 flex items-center gap-2">
+              <Package className="h-4 w-4 text-muted-foreground" />
+              <span>
+                可借: <strong>{item.available_quantity}</strong> / 共 {item.quantity ?? 1}
+                {(item.borrowed_quantity ?? 0) > 0 && `（已借 ${item.borrowed_quantity}）`}
+              </span>
+            </div>
+          )}
           {item.type === 'consumable' && (
             <div className="col-span-2 flex items-center gap-2">
               <Package className="h-4 w-4 text-muted-foreground" />
@@ -402,6 +453,12 @@ export function QuickActionPanel({
             )}
             <span className="text-sm">{lastResult.message}</span>
           </div>
+        )}
+
+        {!activeAction && availableActions.length === 0 && !canManage && (
+          <p className="text-sm text-muted-foreground">
+            你可以查看该物品信息；借用、领用请联系物品管理员登记。
+          </p>
         )}
 
         {/* Action Buttons (Requirements 4.1, 4.2, 4.3, 4.4) */}
@@ -481,6 +538,25 @@ export function QuickActionPanel({
                 </p>
               )}
             </div>
+            {(item.available_quantity ?? 1) > 1 && (
+              <div className="space-y-2">
+                <Label htmlFor="borrow_quantity">
+                  借出数量 * (可借: {item.available_quantity})
+                </Label>
+                <Input
+                  id="borrow_quantity"
+                  type="number"
+                  min={1}
+                  max={item.available_quantity ?? 1}
+                  {...borrowForm.register('quantity', { valueAsNumber: true })}
+                />
+                {borrowForm.formState.errors.quantity && (
+                  <p className="text-sm text-destructive">
+                    {borrowForm.formState.errors.quantity.message}
+                  </p>
+                )}
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="borrow_notes">备注</Label>
               <Textarea
@@ -509,6 +585,25 @@ export function QuickActionPanel({
         {/* Return Form */}
         {activeAction === 'return' && (
           <form onSubmit={returnForm.handleSubmit(handleReturnSubmit)} className="space-y-3">
+            {activeBorrows.length > 1 && (
+              <div className="space-y-2">
+                <Label htmlFor="return_record">归还哪条借用记录 *</Label>
+                <select
+                  id="return_record"
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+                  value={returnRecordId ?? ''}
+                  onChange={(e) => setReturnRecordId(e.target.value ? Number(e.target.value) : null)}
+                >
+                  <option value="">请选择</option>
+                  {activeBorrows.map((row) => (
+                    <option key={row.id} value={row.id}>
+                      {row.borrower_username} · {row.quantity} 件
+                      {row.expected_return_date ? ` · 应还 ${row.expected_return_date}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="return_notes">归还备注</Label>
               <Textarea

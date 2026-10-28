@@ -67,12 +67,12 @@ export function useQuickAction() {
   );
 
   const executeBorrow = useCallback(
-    (borrower: number, expected_return_date: string, notes?: string) =>
+    (borrower: number, expected_return_date: string, notes?: string, quantity = 1) =>
       item
         ? run('borrow', () =>
             apiFetch(`/items/${item.id}/borrow/`, {
               method: 'POST',
-              body: json({ borrower, quantity: 1, expected_return_date, notes }),
+              body: json({ borrower, quantity, expected_return_date, notes }),
             })
           )
         : Promise.resolve({ success: false, action: 'borrow' as const, message: '未选择物品' }),
@@ -80,19 +80,21 @@ export function useQuickAction() {
   );
 
   const executeReturn = useCallback(
-    (return_notes?: string) =>
+    (return_notes?: string, borrowRecordId?: number | null) =>
       item
-        ? run('return', () =>
-            apiFetch(`/items/${item.id}/return/`, {
+        ? run('return', () => {
+            // Prefer the record the user picked; fall back to the single
+            // visible active record. With several records and no choice the
+            // backend answers BORROW_RECORD_REQUIRED instead of guessing.
+            const recordId = borrowRecordId ?? item.current_borrow_record_id ?? null;
+            return apiFetch(`/items/${item.id}/return/`, {
               method: 'POST',
               body: json({
-                ...(item.current_borrow_record_id
-                  ? { borrow_record_id: item.current_borrow_record_id }
-                  : {}),
+                ...(recordId ? { borrow_record_id: recordId } : {}),
                 return_notes,
               }),
-            })
-          )
+            });
+          })
         : Promise.resolve({ success: false, action: 'return' as const, message: '未选择物品' }),
     [item, run]
   );

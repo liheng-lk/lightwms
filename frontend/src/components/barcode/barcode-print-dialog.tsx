@@ -22,6 +22,7 @@ import { Printer, Download, Loader2 } from 'lucide-react';
 import { useGenerateBarcodes } from '@/lib/hooks/use-items';
 import type { Item } from '@/lib/types';
 import type { GenerateBarcodeResponse } from '@/lib/api/items';
+import { escapeHtml } from '@/lib/html';
 
 // Label size configurations - Requirements 25.3
 const LABEL_SIZES = [
@@ -130,7 +131,7 @@ export function BarcodePrintDialog({ items, open, onOpenChange }: BarcodePrintDi
 
     const labelWidth = selectedLabelSize.width;
     const labelHeight = selectedLabelSize.height;
-    const columns = config.columns;
+    const columns = Math.max(1, Math.floor(Number(config.columns)) || 1);
     const imageCount = barcodeData.length;
 
     printWindow.document.write(`
@@ -193,8 +194,8 @@ export function BarcodePrintDialog({ items, open, onOpenChange }: BarcodePrintDi
           <div class="print-container">
             ${barcodeData.map(data => `
               <div class="label">
-                <img src="data:image/png;base64,${data.barcodeImage}" class="barcode-image" alt="${data.barcode}" />
-                <div class="item-name">${data.itemName}</div>
+                <img src="data:image/png;base64,${escapeHtml(data.barcodeImage)}" class="barcode-image" alt="${escapeHtml(data.barcode)}" />
+                <div class="item-name">${escapeHtml(data.itemName)}</div>
               </div>
             `).join('')}
           </div>
@@ -241,7 +242,7 @@ export function BarcodePrintDialog({ items, open, onOpenChange }: BarcodePrintDi
     
     const labelWidth = selectedLabelSize.width;
     const labelHeight = selectedLabelSize.height;
-    const columns = config.columns;
+    const columns = Math.max(1, Math.floor(Number(config.columns)) || 1);
 
     // Create a new window with print-ready content
     const pdfWindow = window.open('', '_blank');
@@ -316,13 +317,13 @@ export function BarcodePrintDialog({ items, open, onOpenChange }: BarcodePrintDi
           <div class="instructions">
             <h2>条码标签导出</h2>
             <p>请使用浏览器的「打印」功能（Ctrl+P 或 Cmd+P）将此页面保存为 PDF 文件。</p>
-            <p>标签规格：${selectedLabelSize.name}，每行 ${columns} 个</p>
+            <p>标签规格：${escapeHtml(selectedLabelSize.name)}，每行 ${columns} 个</p>
           </div>
           <div class="print-container">
             ${barcodeData.map(data => `
               <div class="label">
-                <img src="data:image/png;base64,${data.barcodeImage}" class="barcode-image" alt="${data.barcode}" />
-                <div class="item-name">${data.itemName}</div>
+                <img src="data:image/png;base64,${escapeHtml(data.barcodeImage)}" class="barcode-image" alt="${escapeHtml(data.barcode)}" />
+                <div class="item-name">${escapeHtml(data.itemName)}</div>
               </div>
             `).join('')}
           </div>
@@ -417,7 +418,7 @@ export function BarcodePrintDialog({ items, open, onOpenChange }: BarcodePrintDi
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src={`data:image/png;base64,${data.barcodeImage}`}
+                        src={`data:image/png;base64,${escapeHtml(data.barcodeImage)}`}
                         alt={data.barcode}
                         className="max-w-full max-h-[60%] object-contain"
                       />
