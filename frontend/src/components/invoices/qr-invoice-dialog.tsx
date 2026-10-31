@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useCreateInvoice } from '@/lib/hooks/use-invoices';
+import { useCreateInvoice, useRecognizeInvoice } from '@/lib/hooks/use-invoices';
 
 const CATEGORIES = ['采购', '办公用品', '设备', '耗材', '服务', '维修', '其他'];
 
@@ -36,6 +36,7 @@ function invoiceNumberFrom(url: string): string {
 
 export function QrInvoiceDialog({ open, onOpenChange, onImported }: QrInvoiceDialogProps) {
   const createInvoice = useCreateInvoice();
+  const recognizeInvoice = useRecognizeInvoice();
   const videoRef = useRef<HTMLVideoElement>(null);
   const stopCamera = useRef<(() => void) | null>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -87,6 +88,17 @@ export function QrInvoiceDialog({ open, onOpenChange, onImported }: QrInvoiceDia
     setQrUrl(url);
     setName(number ? `数电发票${number}` : '二维码发票');
     if (source) setFile(source);
+    if (source) void fillFromImage(source);
+  };
+
+  const fillFromImage = async (selected: File) => {
+    try {
+      const fields = await recognizeInvoice.mutateAsync(selected);
+      if (fields.amount) setAmount(fields.amount);
+      if (fields.name) setName(fields.name);
+    } catch {
+      // The QR link is still usable when recognition fails.
+    }
   };
 
   const decodeFile = async (selected: File) => {
