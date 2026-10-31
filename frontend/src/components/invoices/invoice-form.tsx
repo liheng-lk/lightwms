@@ -127,7 +127,7 @@ export function InvoiceForm({ invoice, open, onOpenChange, onSuccess }: InvoiceF
         return;
       }
       setInvoiceFile(file);
-      if (file.type.startsWith('image/')) {
+      if (file.type.startsWith('image/') || file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
         recognizeInvoice.mutate(file, {
           onSuccess: (fields) => {
             if (fields.amount && !form.getValues('amount')) {

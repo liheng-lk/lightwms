@@ -64,7 +64,7 @@ export function MailboxImportDialog({ open, onOpenChange, onImported, mode = 'im
 
   useEffect(() => {
     if (!open || mode !== 'import' || activeId === null) return;
-    const images = rows.filter((row) => /\.(jpe?g|png)$/i.test(row.filename) && !row.imported).slice(0, 8);
+    const images = rows.filter((row) => /\.(jpe?g|png|pdf)$/i.test(row.filename) && !row.imported).slice(0, 8);
     let cancelled = false;
     const run = async () => {
       for (const row of images) {

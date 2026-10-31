@@ -1,7 +1,7 @@
-"""Read amount and party names from an invoice image.
+"""Read amount and party names from an invoice image or PDF.
 
-Uses the bundled PP-OCRv4 mobile models (about 15 MB): detection, recognition,
-and a tiny angle classifier. Server-size OCR models are not downloaded.
+Images use the bundled PP-OCRv4 mobile models (about 15 MB). PDFs use the
+text layer first; a scanned PDF falls back to rendering page one and OCR.
 """
 from __future__ import annotations
 
@@ -66,20 +66,71 @@ def _engine_instance():
     return _engine
 
 
-def recognize_invoice_bytes(data: bytes) -> dict:
-    if not data:
-        return fields_from_lines([])
-    from PIL import Image, UnidentifiedImageError
+def _ocr_image(image) -> dict:
     import numpy as np
 
-    try:
-        image = Image.open(BytesIO(data))
-        image.load()
-    except (UnidentifiedImageError, OSError):
-        return fields_from_lines([])
     image = image.convert('RGB')
     image.thumbnail((1600, 1600))
     with _engine_lock:
         result, _elapsed = _engine_instance()(np.array(image))
     lines = [item[1] for item in result or [] if len(item) >= 2]
     return fields_from_lines(lines)
+
+
+def _pdf_text(data: bytes) -> dict:
+    from pypdf import PdfReader
+
+    reader = PdfReader(BytesIO(data))
+    if reader.is_encrypted:
+        try:
+            reader.decrypt('')
+        except Exception:
+            return fields_from_lines([])
+    lines = []
+    for page in reader.pages[:2]:
+        lines.extend((page.extract_text() or '').splitlines())
+    return fields_from_lines(lines)
+
+
+def _pdf_first_page_image(data: bytes):
+    import pypdfium2 as pdfium
+
+    document = pdfium.PdfDocument(data)
+    try:
+        if len(document) < 1:
+            return None
+        bitmap = document[0].render(scale=2)
+        try:
+            return bitmap.to_pil()
+        finally:
+            bitmap.close()
+    finally:
+        document.close()
+
+
+def recognize_invoice_bytes(data: bytes) -> dict:
+    if not data:
+        return fields_from_lines([])
+    if data[:5] == b'%PDF-':
+        try:
+            fields = _pdf_text(data)
+        except Exception:
+            fields = fields_from_lines([])
+        if fields['amount'] or fields['invoice_number']:
+            return fields
+        try:
+            image = _pdf_first_page_image(data)
+        except Exception:
+            return fields
+        if image is None:
+            return fields
+        return _ocr_image(image)
+
+    from PIL import Image, UnidentifiedImageError
+
+    try:
+        image = Image.open(BytesIO(data))
+        image.load()
+    except (UnidentifiedImageError, OSError):
+        return fields_from_lines([])
+    return _ocr_image(image)
