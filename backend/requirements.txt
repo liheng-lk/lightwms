@@ -21,6 +21,9 @@ Pillow>=10.0,<11.0
 # Barcode generation
 python-barcode>=0.15,<1.0
 
+# Mailbox authorization secrets
+cryptography>=42,<46
+
 # Excel support
 openpyxl>=3.1,<4.0
 

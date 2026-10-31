@@ -5,7 +5,7 @@
 [![Node.js](https://img.shields.io/badge/Node.js-22+-green.svg)](https://nodejs.org/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://www.docker.com/)
 
-LightWMS 是一个轻量级仓库管理系统，支持物品、借还、领用补货、扫码、发票、审计、角色权限和系统设置。
+LightWMS 是一个轻量级仓库管理系统，支持物品、借还、领用补货、发票、邮箱导入发票、审计、角色权限和系统设置。
 
 ## DockerHub 快速部署
 
@@ -82,8 +82,9 @@ SECURE_COOKIES=true
 
 - 物品、分类、仓库、库位管理
 - 借用、归还、领用、补货
-- 条码扫码与批量导入导出
 - 发票管理与报销清单导出
+- 多家邮箱授权，读取发票附件并登记
+- 批量导入导出
 - 用户、角色和邀请码
 - 审计日志和登录日志
 - 系统 Logo 与设置
