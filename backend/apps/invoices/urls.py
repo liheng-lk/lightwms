@@ -27,6 +27,7 @@ from .mailbox_views import (
     MailboxRecognizeView,
 )
 from .ocr_views import InvoiceRecognizeView
+from .tax_pdf_views import InvoiceTaxPdfView
 from .private_views import PrivateInvoiceFileView
 
 urlpatterns = [
@@ -45,6 +46,7 @@ urlpatterns = [
     path('invoices/months/', InvoiceMonthsView.as_view(), name='invoice-months'),
     path('invoices/uploaders/', InvoiceUploadersView.as_view(), name='invoice-uploaders'),
     path('invoices/recognize/', InvoiceRecognizeView.as_view(), name='invoice-recognize'),
+    path('invoices/tax-pdf/', InvoiceTaxPdfView.as_view(), name='invoice-tax-pdf'),
     path('mailboxes/', MailboxListCreateView.as_view(), name='mailbox-list-create'),
     path('mailboxes/<int:pk>/', MailboxDetailView.as_view(), name='mailbox-detail'),
     path('mailboxes/<int:pk>/attachments/', MailboxAttachmentListView.as_view(), name='mailbox-attachments'),

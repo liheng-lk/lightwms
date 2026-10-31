@@ -69,4 +69,20 @@ export async function apiDownload(path: string, init: RequestInit = {}, fallback
   URL.revokeObjectURL(url);
 }
 
+export async function apiFile(path: string, init: RequestInit = {}, fallbackName = 'file'): Promise<File> {
+  const headers = new Headers(init.headers);
+  if (init.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+  const response = await fetch(apiUrl(path), { ...init, headers });
+  if (!response.ok) throw await errorFrom(response);
+  const blob = await response.blob();
+  const disposition = response.headers.get('content-disposition') || '';
+  const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  const plain = disposition.match(/filename="?([^";]+)"?/i)?.[1];
+  const filename = encoded ? decodeURIComponent(encoded) : plain || fallbackName;
+  const type = blob.type || 'application/pdf';
+  return new File([blob], filename, { type });
+}
+
 export const json = (value: unknown) => JSON.stringify(value);

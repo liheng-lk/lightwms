@@ -1,24 +1,18 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   AlertTriangle,
   ArrowRight,
-  ClipboardList,
-  Clock,
   Package,
-  PackageMinus,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 
 interface DashboardMetrics {
   items: number | null;
-  activeBorrows: number | null;
-  overdueBorrows: number | null;
   outOfStock: number | null;
-  todayTakes: number | null;
 }
 
 interface PaginatedResponse {
@@ -28,19 +22,8 @@ interface PaginatedResponse {
 
 const initialMetrics: DashboardMetrics = {
   items: null,
-  activeBorrows: null,
-  overdueBorrows: null,
   outOfStock: null,
-  todayTakes: null,
 };
-
-function localDateString() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
 
 async function fetchCount(path: string): Promise<number> {
   const response = await fetch(path, { cache: 'no-store' });
@@ -58,8 +41,6 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [hasPartialError, setHasPartialError] = useState(false);
 
-  const today = useMemo(localDateString, []);
-
   useEffect(() => {
     let cancelled = false;
 
@@ -69,10 +50,7 @@ export default function DashboardPage() {
 
       const requests = await Promise.allSettled([
         fetchCount('/api/wms/items/?page_size=1'),
-        fetchCount('/api/wms/borrow-records/?status=active&page_size=1'),
         fetchCount('/api/wms/items/?type=consumable&status=out_of_stock&page_size=1'),
-        fetchCount(`/api/wms/take-records/?start_date=${today}&end_date=${today}&page_size=1`),
-        fetchCount('/api/wms/borrow-records/?status=overdue&page_size=1'),
       ]);
 
       if (cancelled) return;
@@ -82,10 +60,7 @@ export default function DashboardPage() {
 
       setMetrics({
         items: value(0),
-        activeBorrows: value(1),
-        outOfStock: value(2),
-        todayTakes: value(3),
-        overdueBorrows: value(4),
+        outOfStock: value(1),
       });
       setHasPartialError(requests.some((result) => result.status === 'rejected'));
       setLoading(false);
@@ -95,7 +70,7 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [today]);
+  }, []);
 
   const metricCards = [
     {
@@ -106,32 +81,11 @@ export default function DashboardPage() {
       icon: Package,
     },
     {
-      label: '当前借用',
-      value: metrics.activeBorrows,
-      description: '尚未完成归还的借用记录',
-      href: '/borrow-records?status=active',
-      icon: ClipboardList,
-    },
-    {
-      label: '逾期未还',
-      value: metrics.overdueBorrows,
-      description: '已超过预计归还日期，需要催还',
-      href: '/borrow-records?status=overdue',
-      icon: Clock,
-    },
-    {
-      label: '缺货耗材',
+      label: '数量为零',
       value: metrics.outOfStock,
-      description: '库存已归零，需要关注补货',
+      description: '没有库存的物品，不需要就删除',
       href: '/items?type=consumable&status=out_of_stock',
       icon: AlertTriangle,
-    },
-    {
-      label: '今日领用',
-      value: metrics.todayTakes,
-      description: '今天发生的耗材领用记录',
-      href: `/take-records?start_date=${today}&end_date=${today}`,
-      icon: PackageMinus,
     },
   ];
 
@@ -157,7 +111,7 @@ export default function DashboardPage() {
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
           <div>
             <p className="font-medium">部分统计暂时无法读取</p>
-            <p className="text-muted-foreground">不影响借还和库存操作，可稍后刷新工作台。</p>
+            <p className="text-muted-foreground">不影响物品登记，可稍后刷新工作台。</p>
           </div>
         </div>
       )}
@@ -192,37 +146,19 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-2">
             <Button asChild variant="outline" className="h-auto min-h-14 justify-between px-4 py-3">
-              <Link href="/borrow-records">
-                <span className="flex items-center gap-3">
-                  <ClipboardList className="h-5 w-5" />
-                  查看借用记录
-                </span>
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
-            <Button asChild variant="outline" className="h-auto min-h-14 justify-between px-4 py-3">
               <Link href="/items">
                 <span className="flex items-center gap-3">
                   <Package className="h-5 w-5" />
-                  查找物品
+                  登记或查找物品
                 </span>
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>
             <Button asChild variant="outline" className="h-auto min-h-14 justify-between px-4 py-3">
-              <Link href="/borrow-records?status=active">
+              <Link href="/invoices">
                 <span className="flex items-center gap-3">
-                  <ClipboardList className="h-5 w-5" />
-                  处理未归还
-                </span>
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
-            <Button asChild variant="outline" className="h-auto min-h-14 justify-between px-4 py-3">
-              <Link href="/items?type=consumable&status=out_of_stock">
-                <span className="flex items-center gap-3">
-                  <AlertTriangle className="h-5 w-5" />
-                  查看缺货耗材
+                  <Package className="h-5 w-5" />
+                  登记发票
                 </span>
                 <ArrowRight className="h-4 w-4" />
               </Link>
@@ -239,22 +175,22 @@ export default function DashboardPage() {
             <div className="flex gap-3">
               <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">1</div>
               <div>
-                <p className="font-medium">从物品列表办理借还和领补</p>
-                <p className="text-muted-foreground">打开物品后可以直接借用、归还、领用或补货。</p>
+                <p className="font-medium">只登记还在用的物品</p>
+                <p className="text-muted-foreground">新增、编辑或删除物品，不再办理借用、领用和补货。</p>
               </div>
             </div>
             <div className="flex gap-3">
               <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">2</div>
               <div>
-                <p className="font-medium">先处理缺货和未归还</p>
-                <p className="text-muted-foreground">工作台把需要关注的状态放在普通管理操作之前。</p>
+                <p className="font-medium">没有的物品直接删除</p>
+                <p className="text-muted-foreground">数量为零只是提醒，不需要的物品从列表里删除。</p>
               </div>
             </div>
             <div className="flex gap-3">
               <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">3</div>
               <div>
                 <p className="font-medium">管理配置放到低频区域</p>
-                <p className="text-muted-foreground">仓库、库位、分类和系统设置不应干扰日常出入库路径。</p>
+                <p className="text-muted-foreground">仓库、库位、分类和系统设置不应干扰物品登记。</p>
               </div>
             </div>
           </CardContent>

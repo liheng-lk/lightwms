@@ -1,7 +1,7 @@
 'use client';
 import { useMutation,useQuery,useQueryClient } from '@tanstack/react-query';
 import type { Invoice,InvoiceStatus,Paginated } from '../types';
-import { apiDownload,apiFetch,json,queryString } from '../api/client';
+import { apiDownload,apiFetch,apiFile,json,queryString } from '../api/client';
 type Params=Record<string,unknown>;
 type InvoiceUploader={id:number;username:string};
 function normalize(invoice:any):Invoice{return {...invoice,amount:Number(invoice.amount)};}
@@ -13,6 +13,7 @@ export function useInvoiceUploaders(){return useQuery({queryKey:['invoices','upl
 export function useCreateInvoice(){const qc=useQueryClient();return useMutation<Invoice,Error,any>({mutationFn:async(d)=>{const form=new FormData();for(const [k,v] of Object.entries(d)){if(v===undefined||v===null)continue;if(k==='file'&&v instanceof File)form.append('file',v);else form.append(k,String(v));}return normalize(await apiFetch<any>('/invoices/',{method:'POST',body:form}));},onSuccess:inv(qc)});}
 export interface InvoiceRecognition { amount: string | null; invoice_number: string; buyer_name: string; seller_name: string; name: string }
 export function useRecognizeInvoice(){return useMutation<InvoiceRecognition,Error,File>({mutationFn:async(file)=>{const form=new FormData();form.append('file',file);return apiFetch<InvoiceRecognition>('/invoices/recognize/',{method:'POST',body:form});}});}
+export function fetchTaxInvoicePdf(url: string){return apiFile('/invoices/tax-pdf/',{method:'POST',body:json({url})},'发票.pdf');}
 export function useUpdateInvoice(){const qc=useQueryClient();return useMutation<Invoice,Error,{id:number;data:Record<string,unknown>}>({mutationFn:async({id,data})=>normalize(await apiFetch<any>(`/invoices/${id}/`,{method:'PATCH',body:json(data)})),onSuccess:inv(qc)});}
 export function useDeleteInvoice(){const qc=useQueryClient();return useMutation<unknown,Error,number>({mutationFn:(id)=>apiFetch(`/invoices/${id}/`,{method:'DELETE'}),onSuccess:inv(qc)});}
 export function useUpdateInvoiceStatus(){const qc=useQueryClient();return useMutation<Invoice,Error,{id:number;status:InvoiceStatus}>({mutationFn:async({id,status})=>normalize(await apiFetch<any>(`/invoices/${id}/status/`,{method:'PATCH',body:json({status})})),onSuccess:inv(qc)});}

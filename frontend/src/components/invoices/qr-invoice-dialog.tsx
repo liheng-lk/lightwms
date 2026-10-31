@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useCreateInvoice, useRecognizeInvoice } from '@/lib/hooks/use-invoices';
+import { fetchTaxInvoicePdf, useCreateInvoice, useRecognizeInvoice } from '@/lib/hooks/use-invoices';
 
 const CATEGORIES = ['采购', '办公用品', '设备', '耗材', '服务', '维修', '其他'];
 
@@ -42,7 +42,8 @@ export function QrInvoiceDialog({ open, onOpenChange, onImported }: QrInvoiceDia
   const stopCamera = useRef<(() => void) | null>(null);
   const cameraHandled = useRef(false);
   const amountTouched = useRef(false);
-  const [file, setFile] = useState<File | null>(null);
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [downloading, setDownloading] = useState(false);
   const [qrUrl, setQrUrl] = useState('');
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
@@ -56,7 +57,8 @@ export function QrInvoiceDialog({ open, onOpenChange, onImported }: QrInvoiceDia
     cameraHandled.current = false;
     amountTouched.current = false;
     setCameraOn(false);
-    setFile(null);
+    setPdfFile(null);
+    setDownloading(false);
     setQrUrl('');
     setName('');
     setAmount('');
@@ -72,32 +74,34 @@ export function QrInvoiceDialog({ open, onOpenChange, onImported }: QrInvoiceDia
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  const captureFrame = (): File | null => {
-    const video = videoRef.current;
-    if (!video || !video.videoWidth) return null;
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const context = canvas.getContext('2d');
-    if (!context) return null;
-    context.drawImage(video, 0, 0);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
-    const bytes = Uint8Array.from(atob(dataUrl.split(',')[1] || ''), (char) => char.charCodeAt(0));
-    return new File([bytes], 'invoice-qr.jpg', { type: 'image/jpeg' });
-  };
-
-  const applyResult = (text: string, source: File | null) => {
+  const applyResult = (text: string) => {
     const url = text.trim();
-    if (source) setFile(source);
     if (!/^https:\/\//i.test(url)) {
-      toast.error('二维码里不是发票下载链接，改为识别发票内容');
-      if (source) void fillFromImage(source);
+      toast.error('二维码里不是发票下载链接');
       return;
     }
-    const number = invoiceNumberFrom(url);
     setQrUrl(url);
-    setName(number ? `数电发票${number}` : '二维码发票');
-    if (source) void fillFromImage(source);
+    const number = invoiceNumberFrom(url);
+    setName(number ? `数电发票${number}` : '电子发票');
+    void downloadOfficialPdf(url);
+  };
+
+  const downloadOfficialPdf = async (url: string) => {
+    setDownloading(true);
+    setPdfFile(null);
+    try {
+      const pdf = await fetchTaxInvoicePdf(url);
+      if (!pdf.size || (pdf.type && !pdf.type.includes('pdf') && !pdf.name.toLowerCase().endsWith('.pdf'))) {
+        throw new Error('税务网站没有返回 PDF');
+      }
+      setPdfFile(pdf);
+      await fillFromImage(pdf);
+    } catch (error) {
+      setPdfFile(null);
+      toast.error(error instanceof Error ? error.message : '没有下载到发票 PDF，请手动上传 PDF');
+    } finally {
+      setDownloading(false);
+    }
   };
 
   const fillFromImage = async (selected: File) => {
@@ -120,12 +124,9 @@ export function QrInvoiceDialog({ open, onOpenChange, onImported }: QrInvoiceDia
       image.src = imageUrl;
       await image.decode();
       const result = await new BrowserQRCodeReader().decodeFromImageElement(image);
-      applyResult(result.getText(), selected);
+      applyResult(result.getText());
     } catch {
-      setFile(selected);
-      setQrUrl('');
-      toast.message('没有识别到二维码，改为识别发票内容');
-      void fillFromImage(selected);
+      toast.error('没有识别到发票二维码');
     } finally {
       URL.revokeObjectURL(imageUrl);
     }
@@ -138,7 +139,7 @@ export function QrInvoiceDialog({ open, onOpenChange, onImported }: QrInvoiceDia
       const controls = await new BrowserQRCodeReader().decodeFromVideoDevice(undefined, videoRef.current, (result) => {
         if (!result || cameraHandled.current) return;
         cameraHandled.current = true;
-        applyResult(result.getText(), captureFrame());
+        applyResult(result.getText());
         stopCamera.current?.();
         stopCamera.current = null;
         setCameraOn(false);
@@ -153,8 +154,8 @@ export function QrInvoiceDialog({ open, onOpenChange, onImported }: QrInvoiceDia
   const save = async () => {
     const raw = amount.trim();
     const value = Number(raw);
-    if (!file) {
-      toast.error('请先上传或拍下包含二维码的图片');
+    if (!pdfFile) {
+      toast.error(downloading ? '正在下载发票 PDF' : '请先下载到正式 PDF，不能保存二维码图片');
       return;
     }
     if (!raw || !Number.isFinite(value) || value < 0) {
@@ -163,12 +164,12 @@ export function QrInvoiceDialog({ open, onOpenChange, onImported }: QrInvoiceDia
     }
     try {
       await createInvoice.mutateAsync({
-        name: name.trim() || (qrUrl ? '二维码发票' : file.name.replace(/\.[^.]+$/, '') || '发票'),
+        name: name.trim() || pdfFile.name.replace(/\.pdf$/i, '') || '电子发票',
         amount: value,
         category,
-        custom_type: qrUrl ? '二维码发票' : '',
+        custom_type: '电子发票',
         project: qrUrl.slice(0, 200),
-        file,
+        file: pdfFile,
       });
       toast.success('已按二维码登记发票');
       onOpenChange(false);
@@ -184,7 +185,7 @@ export function QrInvoiceDialog({ open, onOpenChange, onImported }: QrInvoiceDia
         <DialogHeader>
           <DialogTitle>扫描二维码</DialogTitle>
           <DialogDescription>
-            上传发票图片，或打开摄像头扫描二维码。识别到金额会自动填上；没有二维码也可以按发票内容登记。
+            识别二维码后只下载并保存税务网站的 PDF。下载不到 PDF 时不会登记二维码图片。
           </DialogDescription>
         </DialogHeader>
         <Input
@@ -203,13 +204,10 @@ export function QrInvoiceDialog({ open, onOpenChange, onImported }: QrInvoiceDia
             {cameraOn ? '正在扫描…' : '打开摄像头'}
           </Button>
         </div>
-        {(qrUrl || file) && (
+        {(qrUrl || downloading || pdfFile) && (
           <div className="space-y-2 text-sm">
-            {qrUrl && (
-              <a href={qrUrl} target="_blank" rel="noreferrer" className="break-all text-primary underline">
-                {qrUrl}
-              </a>
-            )}
+            {downloading && <p className="text-xs text-muted-foreground">正在下载正式发票 PDF…</p>}
+            {pdfFile && <p className="text-xs text-muted-foreground">将保存文件：{pdfFile.name}</p>}
             {recognizing && <p className="text-xs text-muted-foreground">正在识别金额…</p>}
             <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="发票名称" />
             <div className="grid grid-cols-2 gap-2">
@@ -229,7 +227,7 @@ export function QrInvoiceDialog({ open, onOpenChange, onImported }: QrInvoiceDia
                 </SelectContent>
               </Select>
             </div>
-            <Button onClick={save} disabled={createInvoice.isPending}>
+            <Button onClick={save} disabled={createInvoice.isPending || downloading || !pdfFile}>
               {createInvoice.isPending ? '正在登记…' : '登记为发票'}
             </Button>
           </div>

@@ -3,8 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  Package, ClipboardList, FolderTree, MapPin, LayoutDashboard, PackageMinus,
-  PackagePlus, Warehouse, Users, Ticket, Settings, FileText, Receipt,
+  Package, FolderTree, MapPin, LayoutDashboard, Warehouse, Users, Ticket, Settings, FileText, Receipt,
 } from 'lucide-react';
 import { SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
@@ -26,9 +25,6 @@ const managerRoles: NavRole[] = ['super_admin', 'item_manager'];
 const navItems: NavItem[] = [
   { title: '工作台', href: '/', icon: LayoutDashboard },
   { title: '物品管理', href: '/items', icon: Package },
-  { title: '借用记录', href: '/borrow-records', icon: ClipboardList },
-  { title: '领用记录', href: '/take-records', icon: PackageMinus },
-  { title: '补货记录', href: '/replenish-records', icon: PackagePlus, roles: managerRoles },
   { title: '发票管理', href: '/invoices', icon: Receipt, roles: managerRoles },
   { title: '分类管理', href: '/categories', icon: FolderTree, roles: managerRoles },
   { title: '库位管理', href: '/locations', icon: MapPin, roles: managerRoles },

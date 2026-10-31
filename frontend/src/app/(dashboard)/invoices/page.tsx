@@ -171,7 +171,7 @@ export default function InvoicesPage() {
             tips={[
               '物品管理员可查看、登记和编辑全部库存相关发票',
               '先在「我的邮箱」登录自己的邮箱，邮箱只属于当前账号',
-              '邮件附件用「从邮箱导入」；只有二维码时点「扫描二维码」',
+              '邮件附件用「从邮箱导入」；只有二维码时下载正式 PDF，不会保存二维码图片',
               '可按类别、状态、月份、上传者和自定义日期范围筛选',
               '发票文件 ZIP 和报销清单 Excel 会继承当前筛选条件',
               '报销状态审批及批量操作仅超级管理员可操作',
@@ -214,7 +214,7 @@ export default function InvoicesPage() {
               </Button>
               <Button variant="outline" onClick={() => setShowQrDialog(true)}>
                 <QrCode className="h-4 w-4 mr-2" />
-                扫描二维码
+                下载发票 PDF
               </Button>
               <Button onClick={() => setShowCreateDialog(true)}>
                 <Plus className="h-4 w-4 mr-2" />

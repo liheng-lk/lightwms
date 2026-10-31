@@ -10,12 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ItemImages } from '@/components/items/item-images';
 import { ItemInfo } from '@/components/items/item-info';
 import { ItemActions } from '@/components/items/item-actions';
-import { ItemHistory } from '@/components/items/item-history';
 import { PageHelp } from '@/components/ui/help-tooltip';
-import { BorrowModal } from '@/components/operations/borrow-modal';
-import { ReturnModal } from '@/components/operations/return-modal';
-import { TakeModal } from '@/components/operations/take-modal';
-import { ReplenishModal } from '@/components/operations/replenish-modal';
 import { BarcodeModal } from '@/components/operations/barcode-modal';
 import { useItem, useDeactivateItem } from '@/lib/hooks/use-items';
 
@@ -27,10 +22,6 @@ export default function ItemDetailPage() {
   const { data: item, isLoading, refetch } = useItem(itemId);
   const { mutate: deactivateItem, isPending: isDeactivating } = useDeactivateItem();
   
-  const [borrowOpen, setBorrowOpen] = useState(false);
-  const [returnOpen, setReturnOpen] = useState(false);
-  const [takeOpen, setTakeOpen] = useState(false);
-  const [replenishOpen, setReplenishOpen] = useState(false);
   const [barcodeOpen, setBarcodeOpen] = useState(false);
   
   const handleSuccess = () => {
@@ -75,9 +66,7 @@ export default function ItemDetailPage() {
           tips={[
             '左侧可上传和管理物品图片',
             '点击图片可设为主图或删除',
-            '可重复使用物品：借出 → 归还',
-            '消耗品：领用（减库存）/ 补货（加库存）',
-            '操作历史记录所有借用/领用/补货记录',
+            '没有的物品直接删除',
           ]}
         />
       </div>
@@ -111,52 +100,15 @@ export default function ItemDetailPage() {
             <CardContent>
               <ItemActions
                 item={item}
-                onBorrow={() => setBorrowOpen(true)}
-                onReturn={() => setReturnOpen(true)}
-                onTake={() => setTakeOpen(true)}
-                onReplenish={() => setReplenishOpen(true)}
                 onGenerateBarcode={() => setBarcodeOpen(true)}
                 onDeactivate={handleDeactivate}
               />
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">操作历史</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ItemHistory itemId={itemId} itemType={item.item_type ?? item.type} />
             </CardContent>
           </Card>
         </div>
       </div>
       
       {/* 弹窗 */}
-      <BorrowModal
-        item={item}
-        open={borrowOpen}
-        onOpenChange={setBorrowOpen}
-        onSuccess={handleSuccess}
-      />
-      <ReturnModal
-        item={item}
-        open={returnOpen}
-        onOpenChange={setReturnOpen}
-        onSuccess={handleSuccess}
-      />
-      <TakeModal
-        item={item}
-        open={takeOpen}
-        onOpenChange={setTakeOpen}
-        onSuccess={handleSuccess}
-      />
-      <ReplenishModal
-        item={item}
-        open={replenishOpen}
-        onOpenChange={setReplenishOpen}
-        onSuccess={handleSuccess}
-      />
       <BarcodeModal
         item={item}
         open={barcodeOpen}
