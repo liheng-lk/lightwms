@@ -57,7 +57,7 @@ export function MailboxImportDialog({ open, onOpenChange, onImported, mode = 'im
   const [amounts, setAmounts] = useState<Record<string, string>>({});
   const [names, setNames] = useState<Record<string, string>>({});
   const [importedKeys, setImportedKeys] = useState<Record<string, boolean>>({});
-  const [importingKey, setImportingKey] = useState<string | null>(null);
+  const [pdfErrors, setPdfErrors] = useState<Record<string, string>>({});
 
   const activeId = selectedId ?? mailboxes[0]?.id ?? null;
   const attachmentsQuery = useMailboxAttachments(activeId, open && loadAttachments);
@@ -87,6 +87,15 @@ export function MailboxImportDialog({ open, onOpenChange, onImported, mode = 'im
           }
           if (fields.name) {
             setNames((current) => current[key] ? current : { ...current, [key]: fields.name });
+          }
+          if (fields.pdf_error) {
+            setPdfErrors((current) => ({ ...current, [key]: fields.pdf_error || '没有下载到正式 PDF' }));
+          } else if (fields.pdf_ready) {
+            setPdfErrors((current) => {
+              const next = { ...current };
+              delete next[key];
+              return next;
+            });
           }
         } catch {
           // Leave the amount blank so it can be typed.
@@ -130,6 +139,10 @@ export function MailboxImportDialog({ open, onOpenChange, onImported, mode = 'im
     const key = rowKeyOf(row);
     const raw = (amounts[key] ?? '').trim();
     const amount = Number(raw);
+    if (pdfErrors[key]) {
+      toast.error(pdfErrors[key]);
+      return;
+    }
     if (!raw || !Number.isFinite(amount) || amount < 0) {
       toast.error('请先填写这张发票的金额');
       return;
@@ -250,7 +263,9 @@ export function MailboxImportDialog({ open, onOpenChange, onImported, mode = 'im
                       <p className="truncate text-sm font-medium">{row.filename}</p>
                       <p className="truncate text-xs text-muted-foreground">
                         {row.subject || '无主题'} · {row.sender || '未知发件人'} · {Math.ceil(row.size / 1024)} KB
+                        {/\.pdf$/i.test(row.filename) ? ' · 保存 PDF' : ' · 二维码将换成正式 PDF'}
                       </p>
+                      {pdfErrors[key] && <p className="truncate text-xs text-destructive">{pdfErrors[key]}</p>}
                     </div>
                     <Input
                       inputMode="decimal"
@@ -261,7 +276,7 @@ export function MailboxImportDialog({ open, onOpenChange, onImported, mode = 'im
                     />
                     <Button
                       size="sm"
-                      disabled={imported || importingKey === key}
+                      disabled={imported || importingKey === key || Boolean(pdfErrors[key])}
                       onClick={() => importOne(row)}
                     >
                       {imported ? '已导入' : importingKey === key ? '上传中…' : '上传为发票'}

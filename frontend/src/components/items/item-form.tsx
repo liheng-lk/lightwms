@@ -395,7 +395,7 @@ export function ItemForm({ item, open, onOpenChange, onSuccess }: ItemFormProps)
                       />
                     </FormControl>
                     <FormDescription className="text-xs">
-                      相同物品的数量，可同时借出多件
+                      相同物品登记在同一条记录里的数量
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

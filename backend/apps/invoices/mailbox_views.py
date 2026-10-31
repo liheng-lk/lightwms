@@ -182,6 +182,22 @@ class MailboxImportView(APIView):
 
         upload = BytesIO(attachment['content'])
         upload.seek(0)
+        filename = attachment['filename']
+        if not attachment['content'].startswith(b'%PDF-'):
+            from .invoice_qr import tax_url_from_image
+            from .tax_pdf import TaxPdfError, download_tax_pdf
+
+            qr_url = tax_url_from_image(attachment['content'])
+            if not qr_url:
+                return _error('这个附件不是 PDF，图片里也没有税务发票二维码。请上传正式 PDF。')
+            try:
+                pdf_bytes, pdf_name = download_tax_pdf(qr_url)
+            except TaxPdfError as exc:
+                return _error(str(exc))
+            upload = BytesIO(pdf_bytes)
+            upload.seek(0)
+            filename = pdf_name
+            project = project or qr_url[:200]
         try:
             with transaction.atomic():
                 invoice = InvoiceService.create(
@@ -189,7 +205,7 @@ class MailboxImportView(APIView):
                     amount=amount,
                     category=category,
                     file=upload,
-                    filename=attachment['filename'],
+                    filename=filename,
                     operator=request.user,
                     custom_type=custom_type,
                     project=project,
@@ -220,8 +236,26 @@ class MailboxRecognizeView(APIView):
             secret = decrypt_secret(account.secret_encrypted)
             attachment = fetch_attachment(account, secret, uid, part_index)
             from .invoice_ocr import recognize_invoice_bytes
+            from .invoice_qr import tax_url_from_image
+            from .tax_pdf import TaxPdfError, download_tax_pdf
 
-            return Response(recognize_invoice_bytes(attachment['content']))
+            content = attachment['content']
+            fields = recognize_invoice_bytes(content)
+            if not content.startswith(b'%PDF-'):
+                qr_url = tax_url_from_image(content)
+                if qr_url:
+                    fields['qr_url'] = qr_url
+                    try:
+                        pdf_bytes, _pdf_name = download_tax_pdf(qr_url)
+                        pdf_fields = recognize_invoice_bytes(pdf_bytes)
+                        for key, value in pdf_fields.items():
+                            if value:
+                                fields[key] = value
+                        fields['pdf_ready'] = True
+                    except TaxPdfError as exc:
+                        fields['pdf_ready'] = False
+                        fields['pdf_error'] = str(exc)
+            return Response(fields)
         except (MailboxConnectionError, ValueError) as exc:
             return _error(str(exc))
         except Exception:

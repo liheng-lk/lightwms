@@ -103,33 +103,10 @@ export function ItemInfo({ item }: ItemInfoProps) {
       {itemType === 'reusable' && (
         <div className="grid grid-cols-2 gap-4 text-sm">
           <InfoRow 
-            label="总数量" 
+            label="数量"
             value={String(item.quantity ?? 1)} 
             icon={<Package className="h-3.5 w-3.5" />}
           />
-          <InfoRow 
-            label="可借数量" 
-            value={`${item.available_quantity ?? item.quantity ?? 1} / ${item.quantity ?? 1}`}
-            highlight={(item.available_quantity ?? item.quantity ?? 1) === 0}
-          />
-        </div>
-      )}
-      
-      {/* 借出状态显示当前借用人 - Requirements 5.3 */}
-      {itemType === 'reusable' && item.status === 'borrowed' && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <div className="flex items-center gap-2 text-yellow-800">
-            <User className="h-4 w-4" />
-            <span className="font-medium">当前借用人</span>
-          </div>
-          <p className="mt-1 text-yellow-900 font-semibold">
-            {item.current_borrower || '未知'}
-          </p>
-          {(item.borrowed_quantity ?? 0) > 0 && (item.quantity ?? 1) > 1 && (
-            <p className="mt-1 text-sm text-yellow-700">
-              已借出 {item.borrowed_quantity} 件
-            </p>
-          )}
         </div>
       )}
       

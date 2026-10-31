@@ -73,8 +73,8 @@ export function UpdateRoleDialog({ user, open, onOpenChange }: UpdateRoleDialogP
           </div>
 
           <div className="rounded-md border p-3 text-sm text-muted-foreground space-y-1">
-            <p><strong className="text-foreground">普通用户</strong>：查看库存、查看自己的业务记录、归还自己的借用。</p>
-            <p><strong className="text-foreground">物品管理员</strong>：管理自己负责的物品，并代办借用、领用和补货。</p>
+            <p><strong className="text-foreground">普通用户</strong>：查看库存和自己的记录。</p>
+            <p><strong className="text-foreground">物品管理员</strong>：新增、编辑、删除物品，并登记发票。</p>
             <p><strong className="text-foreground">超级管理员</strong>：管理全部库存、用户、邀请码和系统设置。</p>
           </div>
         </div>
