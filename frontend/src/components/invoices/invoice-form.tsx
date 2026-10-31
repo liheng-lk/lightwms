@@ -30,7 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useCreateInvoice, useUpdateInvoice } from '@/lib/hooks/use-invoices';
+import { useCreateInvoice, useRecognizeInvoice, useUpdateInvoice } from '@/lib/hooks/use-invoices';
 import type { Invoice } from '@/lib/types';
 
 // Accepted invoice file types - Requirements 23.2
@@ -70,6 +70,7 @@ export function InvoiceForm({ invoice, open, onOpenChange, onSuccess }: InvoiceF
   const isEditing = !!invoice;
   const { mutate: createInvoice, isPending: isCreating } = useCreateInvoice();
   const { mutate: updateInvoice, isPending: isUpdating } = useUpdateInvoice();
+  const recognizeInvoice = useRecognizeInvoice();
   
   // File state (only for create)
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
@@ -126,6 +127,18 @@ export function InvoiceForm({ invoice, open, onOpenChange, onSuccess }: InvoiceF
         return;
       }
       setInvoiceFile(file);
+      if (file.type.startsWith('image/')) {
+        recognizeInvoice.mutate(file, {
+          onSuccess: (fields) => {
+            if (fields.amount && !form.getValues('amount')) {
+              form.setValue('amount', Number(fields.amount), { shouldValidate: true });
+            }
+            if (fields.name && !form.getValues('name')) {
+              form.setValue('name', fields.name, { shouldValidate: true });
+            }
+          },
+        });
+      }
     }
   };
 
