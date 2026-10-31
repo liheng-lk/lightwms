@@ -5,7 +5,7 @@ from django.test import SimpleTestCase, override_settings
 
 from apps.invoices.mailbox_crypto import decrypt_secret, encrypt_secret
 from apps.invoices.invoice_ocr import fields_from_lines
-from apps.invoices.mailbox_imap import attachments_from_message, login_from_email, resolve_endpoint
+from apps.invoices.mailbox_imap import attachments_from_message, imap_since, login_from_email, resolve_endpoint
 from apps.invoices.models import MailboxProvider
 
 
@@ -33,6 +33,16 @@ class MailboxCryptoTests(SimpleTestCase):
         self.assertEqual(fields['invoice_number'], '26152000001052906506')
         self.assertEqual(fields['buyer_name'], '杭州电子科技大学')
         self.assertIn('杭州电子科技大学', fields['name'])
+        priced = fields_from_lines([
+            '金额 ¥100.00',
+            '税额 ¥13.00',
+            '价税合计（大写）壹佰壹拾叁元整（小写）¥113.00',
+        ])
+        self.assertEqual(priced['amount'], '113.00')
+
+    def test_imap_date_stays_english(self):
+        since = imap_since(0)
+        self.assertRegex(since, r'^\d{2}-[A-Z][a-z]{2}-\d{4}$')
 
     def test_extracts_only_invoice_files(self):
         message = EmailMessage()

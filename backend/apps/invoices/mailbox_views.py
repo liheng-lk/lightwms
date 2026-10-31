@@ -114,8 +114,11 @@ class MailboxAttachmentListView(APIView):
         if account is None:
             return _error('邮箱不存在。', 'MAILBOX_NOT_FOUND', status.HTTP_404_NOT_FOUND)
         try:
-            secret = decrypt_secret(account.secret_encrypted)
             days = int(request.query_params.get('days') or 45)
+        except (TypeError, ValueError):
+            return _error('读取天数无效。')
+        try:
+            secret = decrypt_secret(account.secret_encrypted)
             rows = list_invoice_attachments(account, secret, days)
         except (MailboxConnectionError, ValueError) as exc:
             account.last_error = str(exc)[:300]
@@ -164,8 +167,8 @@ class MailboxImportView(APIView):
             return _error('请填写有效的金额，并选择一个附件。')
         if not name or not category:
             return _error('请填写发票名称和类别。')
-        if amount < 0:
-            return _error('金额不能为负数。')
+        if not amount.is_finite() or amount < 0:
+            return _error('请填写有效的金额，并选择一个附件。')
 
         source_key = f'{account.id}:{uid}:{part_index}'
         if Invoice.objects.filter(source_key=source_key).exists():

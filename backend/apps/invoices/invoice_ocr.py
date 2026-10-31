@@ -14,7 +14,8 @@ _engine = None
 _engine_lock = threading.Lock()
 
 _NUMBER = re.compile(r'发票号码[:：]\s*(\d{8,20})')
-_TOTAL = re.compile(r'价税合计[^\d￥¥]{0,20}[￥¥]?\s*(\d+(?:\.\d{1,2})?)')
+_TOTAL_LINE = re.compile(r'价税合计[^\n]{0,120}')
+_DECIMAL = re.compile(r'(\d+\.\d{2})')
 _YEN = re.compile(r'[￥¥]\s*(\d+\.\d{2})')
 _BUYER = re.compile(r'(?:购买方名称|购方名称)[:：]\s*(\S+)')
 _SELLER = re.compile(r'(?:销售方名称|销方名称)[:：]\s*(\S+)')
@@ -32,29 +33,54 @@ def _clean_amount(raw: str | None) -> str | None:
     return f'{value:.2f}'
 
 
+def _amount_from_text(text: str) -> str | None:
+    """Use the last amount on a 价税合计 line, not an earlier line-item amount."""
+    for line in reversed(list(_TOTAL_LINE.finditer(text))):
+        amounts = _DECIMAL.findall(line.group(0))
+        if amounts:
+            return _clean_amount(amounts[-1])
+    yens = list(_YEN.finditer(text))
+    if yens:
+        return _clean_amount(yens[-1].group(1))
+    return None
+
+
+def _named(fields: dict) -> dict:
+    number = fields.get('invoice_number') or ''
+    buyer = fields.get('buyer_name') or ''
+    if number and buyer:
+        fields['name'] = f'{buyer} 数电发票{number}'[:200]
+    elif number:
+        fields['name'] = f'数电发票{number}'
+    else:
+        fields['name'] = buyer[:200]
+    return fields
+
+
+def _fill_missing(primary: dict, extra: dict) -> dict:
+    merged = dict(primary)
+    for key in ('amount', 'invoice_number', 'buyer_name', 'seller_name'):
+        if not merged.get(key) and extra.get(key):
+            merged[key] = extra[key]
+    return _named(merged)
+
+
 def fields_from_lines(lines: list[str]) -> dict:
     text = '\n'.join(line.strip() for line in lines if line and line.strip())
     number = _NUMBER.search(text)
     buyer = _BUYER.search(text)
     seller = _SELLER.search(text)
-    amount_match = _TOTAL.search(text) or _YEN.search(text)
-    amount = _clean_amount(amount_match.group(1) if amount_match else None)
+    amount = _amount_from_text(text)
     invoice_number = number.group(1) if number else ''
     buyer_name = buyer.group(1) if buyer else ''
     seller_name = seller.group(1) if seller else ''
-    if invoice_number and buyer_name:
-        name = f'{buyer_name} 数电发票{invoice_number}'
-    elif invoice_number:
-        name = f'数电发票{invoice_number}'
-    else:
-        name = buyer_name
-    return {
+    return _named({
         'amount': amount,
         'invoice_number': invoice_number,
         'buyer_name': buyer_name,
         'seller_name': seller_name,
-        'name': name[:200],
-    }
+        'name': '',
+    })
 
 
 def _engine_instance():
@@ -68,7 +94,9 @@ def _engine_instance():
 
 def _ocr_image(image) -> dict:
     import numpy as np
+    from PIL import ImageOps
 
+    image = ImageOps.exif_transpose(image) or image
     image = image.convert('RGB')
     image.thumbnail((1600, 1600))
     with _engine_lock:
@@ -116,7 +144,7 @@ def recognize_invoice_bytes(data: bytes) -> dict:
             fields = _pdf_text(data)
         except Exception:
             fields = fields_from_lines([])
-        if fields['amount'] or fields['invoice_number']:
+        if fields['amount']:
             return fields
         try:
             image = _pdf_first_page_image(data)
@@ -124,7 +152,7 @@ def recognize_invoice_bytes(data: bytes) -> dict:
             return fields
         if image is None:
             return fields
-        return _ocr_image(image)
+        return _fill_missing(fields, _ocr_image(image))
 
     from PIL import Image, UnidentifiedImageError
 

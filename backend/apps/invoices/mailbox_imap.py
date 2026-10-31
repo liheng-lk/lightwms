@@ -15,6 +15,7 @@ ALLOWED_EXTENSIONS = {'.pdf', '.jpg', '.jpeg', '.png'}
 MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
 MAX_MESSAGE_BYTES = 15 * 1024 * 1024
 MAX_MESSAGES = 40
+_IMAP_MONTHS = ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec')
 
 PROVIDER_HOSTS = {
     MailboxProvider.QQ: ('imap.qq.com', 993),
@@ -86,6 +87,12 @@ def login_from_email(email_address: str) -> tuple[str, str, int]:
         if domain.endswith('.' + suffix):
             return target
     return MailboxProvider.CUSTOM, f'imap.{domain}', 993
+
+
+def imap_since(days: int) -> str:
+    """IMAP dates must stay English even when the server locale is Chinese."""
+    day = date.today() - timedelta(days=days)
+    return f'{day.day:02d}-{_IMAP_MONTHS[day.month - 1]}-{day.year}'
 
 
 def decode_mime(value: str | None) -> str:
@@ -202,7 +209,7 @@ def list_invoice_attachments(account, secret: str, days: int = 45) -> list[dict]
         status, _ = imap.select('INBOX', readonly=True)
         if status != 'OK':
             raise MailboxConnectionError('无法打开收件箱。')
-        since = (date.today() - timedelta(days=days)).strftime('%d-%b-%Y')
+        since = imap_since(days)
         status, data = imap.uid('SEARCH', None, 'SINCE', since)
         if status != 'OK' or not data or not data[0]:
             return []
