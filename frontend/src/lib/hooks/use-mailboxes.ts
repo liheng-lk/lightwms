@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, json } from '../api/client';
+import type { InvoiceRecognition } from './use-invoices';
 import type { Invoice } from '../types';
 
 export interface MailboxAccount {
@@ -87,5 +88,15 @@ export function useImportMailboxAttachment() {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['mailboxes'] });
     },
+  });
+}
+
+export function useRecognizeMailboxAttachment() {
+  return useMutation<InvoiceRecognition, Error, { mailboxId: number; uid: string; part_index: number }>({
+    mutationFn: ({ mailboxId, uid, part_index }) =>
+      apiFetch<InvoiceRecognition>(`/mailboxes/${mailboxId}/recognize/`, {
+        method: 'POST',
+        body: json({ uid, part_index }),
+      }),
   });
 }

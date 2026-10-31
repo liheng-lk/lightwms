@@ -4,6 +4,7 @@ from email.message import EmailMessage
 from django.test import SimpleTestCase, override_settings
 
 from apps.invoices.mailbox_crypto import decrypt_secret, encrypt_secret
+from apps.invoices.invoice_ocr import fields_from_lines
 from apps.invoices.mailbox_imap import attachments_from_message, login_from_email, resolve_endpoint
 from apps.invoices.models import MailboxProvider
 
@@ -20,6 +21,18 @@ class MailboxCryptoTests(SimpleTestCase):
         self.assertEqual(resolve_endpoint(MailboxProvider.CUSTOM, 'imap.example.com', 993), ('imap.example.com', 993))
         self.assertEqual(login_from_email('a@qq.com')[:2], (MailboxProvider.QQ, 'imap.qq.com'))
         self.assertEqual(login_from_email('a@corp.example.com')[1], 'imap.corp.example.com')
+
+    def test_reads_amount_and_parties_from_ocr_lines(self):
+        fields = fields_from_lines([
+            '请扫描下方二维码进行下载',
+            '发票号码：26152000001052906506',
+            '购方名称：杭州电子科技大学',
+            '价税合计（元）：￥165.00',
+        ])
+        self.assertEqual(fields['amount'], '165.00')
+        self.assertEqual(fields['invoice_number'], '26152000001052906506')
+        self.assertEqual(fields['buyer_name'], '杭州电子科技大学')
+        self.assertIn('杭州电子科技大学', fields['name'])
 
     def test_extracts_only_invoice_files(self):
         message = EmailMessage()
