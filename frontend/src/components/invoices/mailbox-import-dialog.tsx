@@ -43,9 +43,10 @@ interface MailboxImportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onImported?: () => void;
+  mode?: 'setup' | 'import';
 }
 
-export function MailboxImportDialog({ open, onOpenChange, onImported }: MailboxImportDialogProps) {
+export function MailboxImportDialog({ open, onOpenChange, onImported, mode = 'import' }: MailboxImportDialogProps) {
   const { data: mailboxes = [], isLoading } = useMailboxes(open);
   const saveMailbox = useSaveMailbox();
   const deleteMailbox = useDeleteMailbox();
@@ -122,9 +123,11 @@ export function MailboxImportDialog({ open, onOpenChange, onImported }: MailboxI
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-[680px]">
         <DialogHeader>
-          <DialogTitle>从邮箱导入发票</DialogTitle>
+          <DialogTitle>{mode === 'setup' ? '我的邮箱' : '从邮箱导入发票'}</DialogTitle>
           <DialogDescription>
-            可以授权多个邮箱。系统只读取收件箱里最近 45 天的 PDF、JPG、PNG 附件，授权码会加密保存，页面不会再次显示。
+            {mode === 'setup'
+              ? '每个登录账号只能配置自己的邮箱。授权码加密保存在这个账号下，其他用户看不到，页面也不会再次显示。'
+              : '使用当前账号已配置的邮箱，读取收件箱里最近 45 天的 PDF、JPG、PNG 附件。请先在「我的邮箱」完成登录。'}
           </DialogDescription>
         </DialogHeader>
 
@@ -192,7 +195,7 @@ export function MailboxImportDialog({ open, onOpenChange, onImported }: MailboxI
           ))}
         </div>
 
-        {activeId !== null && (
+        {mode === 'import' && activeId !== null && (
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <Button variant="outline" onClick={() => setLoadAttachments(true)} disabled={attachmentsQuery.isFetching}>
