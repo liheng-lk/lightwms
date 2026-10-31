@@ -71,6 +71,7 @@ export function MailboxImportDialog({ open, onOpenChange, onImported, mode = 'im
         const key = `${activeId}:${row.uid}:${row.part_index}`;
         if (recognized.current.has(key)) continue;
         recognized.current.add(key);
+        let done = false;
         try {
           const fields = await recognizeRef.current({
             mailboxId: activeId,
@@ -78,6 +79,7 @@ export function MailboxImportDialog({ open, onOpenChange, onImported, mode = 'im
             part_index: row.part_index,
           });
           if (cancelled) return;
+          done = true;
           const rowKey = `${row.uid}:${row.part_index}`;
           if (fields.amount) {
             setAmounts((current) => current[rowKey] ? current : { ...current, [rowKey]: fields.amount || '' });
@@ -87,6 +89,8 @@ export function MailboxImportDialog({ open, onOpenChange, onImported, mode = 'im
           }
         } catch {
           // Leave the amount blank so it can be typed.
+        } finally {
+          if (!done) recognized.current.delete(key);
         }
       }
     };
@@ -125,8 +129,9 @@ export function MailboxImportDialog({ open, onOpenChange, onImported, mode = 'im
   const importOne = async (row: MailboxAttachment) => {
     if (activeId === null) return;
     const key = `${row.uid}:${row.part_index}`;
-    const amount = Number(amounts[key]);
-    if (!Number.isFinite(amount) || amount < 0) {
+    const raw = (amounts[key] ?? '').trim();
+    const amount = Number(raw);
+    if (!raw || !Number.isFinite(amount) || amount < 0) {
       toast.error('请先填写这张发票的金额');
       return;
     }

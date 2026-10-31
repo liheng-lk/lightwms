@@ -134,12 +134,13 @@ export function QrInvoiceDialog({ open, onOpenChange, onImported }: QrInvoiceDia
   };
 
   const save = async () => {
-    const value = Number(amount);
+    const raw = amount.trim();
+    const value = Number(raw);
     if (!file) {
       toast.error('请先上传或拍下包含二维码的图片');
       return;
     }
-    if (!Number.isFinite(value) || value < 0) {
+    if (!raw || !Number.isFinite(value) || value < 0) {
       toast.error('请填写发票金额');
       return;
     }
