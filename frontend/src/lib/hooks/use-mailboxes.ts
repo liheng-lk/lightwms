@@ -28,8 +28,8 @@ export interface MailboxAttachment {
 
 export interface MailboxDraft {
   email: string;
-  provider: string;
   secret: string;
+  provider?: string;
   label?: string;
   imap_host?: string;
   imap_port?: number;

@@ -28,15 +28,6 @@ import {
   type MailboxAttachment,
 } from '@/lib/hooks/use-mailboxes';
 
-const PROVIDERS = [
-  { value: 'qq', label: 'QQ 邮箱' },
-  { value: '163', label: '网易 163' },
-  { value: '126', label: '网易 126' },
-  { value: 'gmail', label: 'Gmail' },
-  { value: 'outlook', label: 'Outlook' },
-  { value: 'custom', label: '其他 IMAP' },
-];
-
 const CATEGORIES = ['采购', '办公用品', '设备', '耗材', '服务', '维修', '其他'];
 
 interface MailboxImportDialogProps {
@@ -52,11 +43,9 @@ export function MailboxImportDialog({ open, onOpenChange, onImported, mode = 'im
   const deleteMailbox = useDeleteMailbox();
   const importAttachment = useImportMailboxAttachment();
 
-  const [provider, setProvider] = useState('qq');
   const [email, setEmail] = useState('');
   const [secret, setSecret] = useState('');
   const [label, setLabel] = useState('');
-  const [imapHost, setImapHost] = useState('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [loadAttachments, setLoadAttachments] = useState(false);
   const [category, setCategory] = useState('采购');
@@ -71,15 +60,13 @@ export function MailboxImportDialog({ open, onOpenChange, onImported, mode = 'im
     try {
       const saved = await saveMailbox.mutateAsync({
         email: email.trim(),
-        provider,
         secret,
         label: label.trim(),
-        imap_host: provider === 'custom' ? imapHost.trim() : undefined,
       });
       setSecret('');
       setSelectedId(saved.id);
       setLoadAttachments(false);
-      toast.success('邮箱已授权，可以读取附件');
+      toast.success('邮箱已登录');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '邮箱授权失败');
     }
@@ -126,45 +113,30 @@ export function MailboxImportDialog({ open, onOpenChange, onImported, mode = 'im
           <DialogTitle>{mode === 'setup' ? '我的邮箱' : '从邮箱导入发票'}</DialogTitle>
           <DialogDescription>
             {mode === 'setup'
-              ? '每个登录账号只能配置自己的邮箱。授权码加密保存在这个账号下，其他用户看不到，页面也不会再次显示。'
-              : '使用当前账号已配置的邮箱，读取收件箱里最近 45 天的 PDF、JPG、PNG 附件。请先在「我的邮箱」完成登录。'}
+              ? '每个登录账号用自己的邮箱和登录密码添加邮箱。密码只加密保存在这个账号下，其他用户看不到。'
+              : '使用当前账号已经登录的邮箱，读取收件箱里最近 45 天的 PDF、JPG、PNG 附件。'}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3 rounded-lg border p-3">
-          <p className="text-sm font-medium">授权新邮箱</p>
+          <p className="text-sm font-medium">登录邮箱</p>
           <div className="grid gap-2 sm:grid-cols-2">
-            <Select value={provider} onValueChange={setProvider}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {PROVIDERS.map((item) => (
-                  <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
             <Input value={label} onChange={(event) => setLabel(event.target.value)} placeholder="备注，例如公司邮箱" />
-            <Input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="邮箱地址" />
+            <Input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="邮箱地址" autoComplete="username" />
             <Input
               type="password"
               value={secret}
               onChange={(event) => setSecret(event.target.value)}
-              placeholder="授权码 / 应用专用密码"
-              autoComplete="new-password"
+              placeholder="登录密码"
+              autoComplete="current-password"
+              className="sm:col-span-2"
             />
-            {provider === 'custom' && (
-              <Input
-                value={imapHost}
-                onChange={(event) => setImapHost(event.target.value)}
-                placeholder="IMAP 服务器，例如 imap.example.com"
-                className="sm:col-span-2"
-              />
-            )}
           </div>
           <p className="text-xs text-muted-foreground">
-            QQ、163、126 请在邮箱设置里开启 IMAP 并生成授权码。Gmail 和 Outlook 请使用应用专用密码，并确认 IMAP 已开启。不要填写网页登录密码。
+            直接填写邮箱账号和登录密码。QQ、163、Gmail、Outlook 以及公司邮箱都会按域名自动连接。
           </p>
-          <Button onClick={authorize} disabled={saveMailbox.isPending || !email || secret.length < 6}>
-            {saveMailbox.isPending ? '正在验证登录…' : '授权并保存'}
+          <Button onClick={authorize} disabled={saveMailbox.isPending || !email.includes('@') || !secret}>
+            {saveMailbox.isPending ? '正在登录…' : '登录并保存'}
           </Button>
         </div>
 

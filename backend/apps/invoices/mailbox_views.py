@@ -15,6 +15,7 @@ from .mailbox_imap import (
     connect_mailbox,
     fetch_attachment,
     list_invoice_attachments,
+    login_from_email,
     resolve_endpoint,
 )
 from .models import Invoice, MailboxAccount, MailboxProvider
@@ -52,21 +53,24 @@ class MailboxListCreateView(APIView):
 
     def post(self, request):
         email = str(request.data.get('email') or '').strip().lower()
-        provider = str(request.data.get('provider') or '').strip()
         secret = str(request.data.get('secret') or '')
         label = str(request.data.get('label') or '').strip()[:80]
+        provider = str(request.data.get('provider') or '').strip()
         if not email or '@' not in email:
             return _error('请填写邮箱地址。')
-        if provider not in MailboxProvider.values:
-            return _error('请选择邮箱类型。')
-        if len(secret) < 6 or len(secret) > 200:
-            return _error('请填写邮箱授权码或应用专用密码。')
+        if not secret or len(secret) > 200:
+            return _error('请填写邮箱登录密码。')
         try:
-            host, port = resolve_endpoint(
-                provider,
-                str(request.data.get('imap_host') or ''),
-                request.data.get('imap_port') or None,
-            )
+            if provider == MailboxProvider.CUSTOM and request.data.get('imap_host'):
+                host, port = resolve_endpoint(
+                    provider,
+                    str(request.data.get('imap_host') or ''),
+                    request.data.get('imap_port') or None,
+                )
+            elif provider in MailboxProvider.values and provider != MailboxProvider.CUSTOM:
+                host, port = resolve_endpoint(provider)
+            else:
+                provider, host, port = login_from_email(email)
         except (MailboxConnectionError, TypeError, ValueError) as exc:
             return _error(str(exc))
 

@@ -24,6 +24,39 @@ PROVIDER_HOSTS = {
     MailboxProvider.OUTLOOK: ('outlook.office365.com', 993),
 }
 
+# Domain to provider and IMAP endpoint. Unknown domains use imap.<domain>.
+DOMAIN_LOGINS = {
+    'qq.com': (MailboxProvider.QQ, 'imap.qq.com', 993),
+    'foxmail.com': (MailboxProvider.QQ, 'imap.qq.com', 993),
+    'vip.qq.com': (MailboxProvider.QQ, 'imap.qq.com', 993),
+    '163.com': (MailboxProvider.NETEASE_163, 'imap.163.com', 993),
+    'vip.163.com': (MailboxProvider.NETEASE_163, 'imap.vip.163.com', 993),
+    '126.com': (MailboxProvider.NETEASE_126, 'imap.126.com', 993),
+    'yeah.net': (MailboxProvider.NETEASE_163, 'imap.yeah.net', 993),
+    '188.com': (MailboxProvider.NETEASE_163, 'imap.188.com', 993),
+    'gmail.com': (MailboxProvider.GMAIL, 'imap.gmail.com', 993),
+    'googlemail.com': (MailboxProvider.GMAIL, 'imap.gmail.com', 993),
+    'outlook.com': (MailboxProvider.OUTLOOK, 'outlook.office365.com', 993),
+    'hotmail.com': (MailboxProvider.OUTLOOK, 'outlook.office365.com', 993),
+    'live.com': (MailboxProvider.OUTLOOK, 'outlook.office365.com', 993),
+    'msn.com': (MailboxProvider.OUTLOOK, 'outlook.office365.com', 993),
+    'office365.com': (MailboxProvider.OUTLOOK, 'outlook.office365.com', 993),
+    '139.com': (MailboxProvider.CUSTOM, 'imap.139.com', 993),
+    '189.cn': (MailboxProvider.CUSTOM, 'imap.189.cn', 993),
+    '21cn.com': (MailboxProvider.CUSTOM, 'imap.21cn.com', 993),
+    'sina.com': (MailboxProvider.CUSTOM, 'imap.sina.com', 993),
+    'sina.cn': (MailboxProvider.CUSTOM, 'imap.sina.cn', 993),
+    'sohu.com': (MailboxProvider.CUSTOM, 'imap.sohu.com', 993),
+    'aliyun.com': (MailboxProvider.CUSTOM, 'imap.aliyun.com', 993),
+    'tom.com': (MailboxProvider.CUSTOM, 'imap.tom.com', 993),
+    'icloud.com': (MailboxProvider.CUSTOM, 'imap.mail.me.com', 993),
+    'me.com': (MailboxProvider.CUSTOM, 'imap.mail.me.com', 993),
+    'mac.com': (MailboxProvider.CUSTOM, 'imap.mail.me.com', 993),
+    'yahoo.com': (MailboxProvider.CUSTOM, 'imap.mail.yahoo.com', 993),
+    'yahoo.cn': (MailboxProvider.CUSTOM, 'imap.mail.yahoo.com', 993),
+    '88.com': (MailboxProvider.CUSTOM, 'imap.88.com', 993),
+}
+
 
 class MailboxConnectionError(Exception):
     """Safe, user-facing mailbox failure. Never include the secret."""
@@ -39,6 +72,20 @@ def resolve_endpoint(provider: str, host: str = '', port: int | None = None) -> 
     if not preset:
         raise MailboxConnectionError('不支持的邮箱类型。')
     return preset
+
+
+def login_from_email(email_address: str) -> tuple[str, str, int]:
+    """Pick the IMAP server from the mailbox address. Any domain can log in."""
+    domain = email_address.rsplit('@', 1)[-1].strip().lower()
+    if not re.fullmatch(r'[a-z0-9.-]+\.[a-z]{2,}', domain) or '..' in domain:
+        raise MailboxConnectionError('请填写有效的邮箱地址。')
+    known = DOMAIN_LOGINS.get(domain)
+    if known:
+        return known
+    for suffix, target in DOMAIN_LOGINS.items():
+        if domain.endswith('.' + suffix):
+            return target
+    return MailboxProvider.CUSTOM, f'imap.{domain}', 993
 
 
 def decode_mime(value: str | None) -> str:
@@ -133,7 +180,7 @@ def connect_mailbox(email_address: str, secret: str, host: str, port: int, provi
     try:
         imap = imaplib.IMAP4_SSL(host, port, timeout=20)
         imap.login(email_address, secret)
-        if provider in {MailboxProvider.NETEASE_163, MailboxProvider.NETEASE_126}:
+        if provider in {MailboxProvider.NETEASE_163, MailboxProvider.NETEASE_126} or host.endswith(('163.com', '126.com', 'yeah.net', '188.com')):
             _announce_client(imap)
         return imap
     except imaplib.IMAP4.error as exc:
@@ -141,7 +188,7 @@ def connect_mailbox(email_address: str, secret: str, host: str, port: int, provi
         if secret and secret in detail:
             detail = '登录被拒绝'
         raise MailboxConnectionError(
-            '邮箱登录失败。请确认已开启 IMAP，并使用邮箱授权码或应用专用密码，而不是网页登录密码。'
+            '邮箱登录失败。请确认邮箱和登录密码正确，并且该邮箱已开启 IMAP。'
             + (f'（{detail[:160]}）' if detail else '')
         ) from exc
     except (TimeoutError, OSError) as exc:

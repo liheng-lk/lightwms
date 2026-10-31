@@ -4,7 +4,7 @@ from email.message import EmailMessage
 from django.test import SimpleTestCase, override_settings
 
 from apps.invoices.mailbox_crypto import decrypt_secret, encrypt_secret
-from apps.invoices.mailbox_imap import attachments_from_message, resolve_endpoint
+from apps.invoices.mailbox_imap import attachments_from_message, login_from_email, resolve_endpoint
 from apps.invoices.models import MailboxProvider
 
 
@@ -18,6 +18,8 @@ class MailboxCryptoTests(SimpleTestCase):
     def test_presets_and_custom_host(self):
         self.assertEqual(resolve_endpoint(MailboxProvider.QQ), ('imap.qq.com', 993))
         self.assertEqual(resolve_endpoint(MailboxProvider.CUSTOM, 'imap.example.com', 993), ('imap.example.com', 993))
+        self.assertEqual(login_from_email('a@qq.com')[:2], (MailboxProvider.QQ, 'imap.qq.com'))
+        self.assertEqual(login_from_email('a@corp.example.com')[1], 'imap.corp.example.com')
 
     def test_extracts_only_invoice_files(self):
         message = EmailMessage()
