@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Mail, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -24,6 +24,7 @@ import {
   useImportMailboxAttachment,
   useMailboxAttachments,
   useMailboxes,
+  useRecognizeMailboxAttachment,
   useSaveMailbox,
   type MailboxAttachment,
 } from '@/lib/hooks/use-mailboxes';
@@ -42,6 +43,10 @@ export function MailboxImportDialog({ open, onOpenChange, onImported, mode = 'im
   const saveMailbox = useSaveMailbox();
   const deleteMailbox = useDeleteMailbox();
   const importAttachment = useImportMailboxAttachment();
+  const recognizeAttachment = useRecognizeMailboxAttachment();
+  const recognized = useRef(new Set<string>());
+  const recognizeRef = useRef(recognizeAttachment.mutateAsync);
+  recognizeRef.current = recognizeAttachment.mutateAsync;
 
   const [email, setEmail] = useState('');
   const [secret, setSecret] = useState('');
@@ -50,11 +55,46 @@ export function MailboxImportDialog({ open, onOpenChange, onImported, mode = 'im
   const [loadAttachments, setLoadAttachments] = useState(false);
   const [category, setCategory] = useState('采购');
   const [amounts, setAmounts] = useState<Record<string, string>>({});
+  const [names, setNames] = useState<Record<string, string>>({});
 
   const activeId = selectedId ?? mailboxes[0]?.id ?? null;
   const attachmentsQuery = useMailboxAttachments(activeId, open && loadAttachments);
 
   const rows = useMemo(() => attachmentsQuery.data ?? [], [attachmentsQuery.data]);
+
+  useEffect(() => {
+    if (!open || mode !== 'import' || activeId === null) return;
+    const images = rows.filter((row) => /\.(jpe?g|png)$/i.test(row.filename) && !row.imported).slice(0, 8);
+    let cancelled = false;
+    const run = async () => {
+      for (const row of images) {
+        const key = `${activeId}:${row.uid}:${row.part_index}`;
+        if (recognized.current.has(key)) continue;
+        recognized.current.add(key);
+        try {
+          const fields = await recognizeRef.current({
+            mailboxId: activeId,
+            uid: row.uid,
+            part_index: row.part_index,
+          });
+          if (cancelled) return;
+          const rowKey = `${row.uid}:${row.part_index}`;
+          if (fields.amount) {
+            setAmounts((current) => current[rowKey] ? current : { ...current, [rowKey]: fields.amount || '' });
+          }
+          if (fields.name) {
+            setNames((current) => current[rowKey] ? current : { ...current, [rowKey]: fields.name });
+          }
+        } catch {
+          // Leave the amount blank so it can be typed.
+        }
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeId, mode, open, rows]);
 
   const authorize = async () => {
     try {
@@ -95,7 +135,7 @@ export function MailboxImportDialog({ open, onOpenChange, onImported, mode = 'im
         mailboxId: activeId,
         uid: row.uid,
         part_index: row.part_index,
-        name: row.filename.replace(/\.[^.]+$/, '') || row.subject || '邮箱发票',
+        name: names[key] || row.filename.replace(/\.[^.]+$/, '') || row.subject || '邮箱发票',
         amount,
         category,
       });
