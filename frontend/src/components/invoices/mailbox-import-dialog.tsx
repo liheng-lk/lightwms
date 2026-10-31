@@ -56,11 +56,14 @@ export function MailboxImportDialog({ open, onOpenChange, onImported, mode = 'im
   const [category, setCategory] = useState('采购');
   const [amounts, setAmounts] = useState<Record<string, string>>({});
   const [names, setNames] = useState<Record<string, string>>({});
+  const [importedKeys, setImportedKeys] = useState<Record<string, boolean>>({});
+  const [importingKey, setImportingKey] = useState<string | null>(null);
 
   const activeId = selectedId ?? mailboxes[0]?.id ?? null;
   const attachmentsQuery = useMailboxAttachments(activeId, open && loadAttachments);
 
   const rows = useMemo(() => attachmentsQuery.data ?? [], [attachmentsQuery.data]);
+  const rowKeyOf = (row: MailboxAttachment) => `${activeId}:${row.uid}:${row.part_index}`;
 
   useEffect(() => {
     if (!open || mode !== 'import' || activeId === null) return;
@@ -68,10 +71,9 @@ export function MailboxImportDialog({ open, onOpenChange, onImported, mode = 'im
     let cancelled = false;
     const run = async () => {
       for (const row of images) {
-        const key = `${activeId}:${row.uid}:${row.part_index}`;
+        if (cancelled) return;
+        const key = rowKeyOf(row);
         if (recognized.current.has(key)) continue;
-        recognized.current.add(key);
-        let done = false;
         try {
           const fields = await recognizeRef.current({
             mailboxId: activeId,
@@ -79,18 +81,15 @@ export function MailboxImportDialog({ open, onOpenChange, onImported, mode = 'im
             part_index: row.part_index,
           });
           if (cancelled) return;
-          done = true;
-          const rowKey = `${row.uid}:${row.part_index}`;
+          recognized.current.add(key);
           if (fields.amount) {
-            setAmounts((current) => current[rowKey] ? current : { ...current, [rowKey]: fields.amount || '' });
+            setAmounts((current) => current[key] ? current : { ...current, [key]: fields.amount || '' });
           }
           if (fields.name) {
-            setNames((current) => current[rowKey] ? current : { ...current, [rowKey]: fields.name });
+            setNames((current) => current[key] ? current : { ...current, [key]: fields.name });
           }
         } catch {
           // Leave the amount blank so it can be typed.
-        } finally {
-          if (!done) recognized.current.delete(key);
         }
       }
     };
@@ -128,13 +127,14 @@ export function MailboxImportDialog({ open, onOpenChange, onImported, mode = 'im
 
   const importOne = async (row: MailboxAttachment) => {
     if (activeId === null) return;
-    const key = `${row.uid}:${row.part_index}`;
+    const key = rowKeyOf(row);
     const raw = (amounts[key] ?? '').trim();
     const amount = Number(raw);
     if (!raw || !Number.isFinite(amount) || amount < 0) {
       toast.error('请先填写这张发票的金额');
       return;
     }
+    setImportingKey(key);
     try {
       await importAttachment.mutateAsync({
         mailboxId: activeId,
@@ -144,10 +144,13 @@ export function MailboxImportDialog({ open, onOpenChange, onImported, mode = 'im
         amount,
         category,
       });
+      setImportedKeys((current) => ({ ...current, [key]: true }));
       toast.success(`已上传 ${row.filename}`);
       onImported?.();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '上传失败');
+    } finally {
+      setImportingKey(null);
     }
   };
 
@@ -186,7 +189,7 @@ export function MailboxImportDialog({ open, onOpenChange, onImported, mode = 'im
         </div>
 
         <div className="space-y-2">
-          <p className="text-sm font-medium">已授权邮箱</p>
+          <p className="text-sm font-medium">已登录邮箱</p>
           {isLoading && <p className="text-sm text-muted-foreground">正在读取…</p>}
           {!isLoading && mailboxes.length === 0 && (
             <p className="text-sm text-muted-foreground">还没有授权邮箱。</p>
@@ -234,9 +237,13 @@ export function MailboxImportDialog({ open, onOpenChange, onImported, mode = 'im
             {loadAttachments && !attachmentsQuery.isFetching && rows.length === 0 && !attachmentsQuery.isError && (
               <p className="text-sm text-muted-foreground">最近 45 天没有可导入的 PDF、JPG 或 PNG 附件。</p>
             )}
+            {loadAttachments && !attachmentsQuery.isFetching && rows.length > 8 && (
+              <p className="text-sm text-muted-foreground">一次自动识别前 8 个图片或 PDF，其余金额请手填。</p>
+            )}
             <div className="space-y-2">
               {rows.map((row) => {
-                const key = `${row.uid}:${row.part_index}`;
+                const key = rowKeyOf(row);
+                const imported = row.imported || importedKeys[key];
                 return (
                   <div key={key} className="grid gap-2 rounded-md border p-3 sm:grid-cols-[1fr_140px_auto] sm:items-center">
                     <div className="min-w-0">
@@ -249,15 +256,15 @@ export function MailboxImportDialog({ open, onOpenChange, onImported, mode = 'im
                       inputMode="decimal"
                       placeholder="金额"
                       value={amounts[key] ?? ''}
-                      disabled={row.imported}
+                      disabled={imported}
                       onChange={(event) => setAmounts((current) => ({ ...current, [key]: event.target.value }))}
                     />
                     <Button
                       size="sm"
-                      disabled={row.imported || importAttachment.isPending}
+                      disabled={imported || importingKey === key}
                       onClick={() => importOne(row)}
                     >
-                      {row.imported ? '已导入' : '上传为发票'}
+                      {imported ? '已导入' : importingKey === key ? '上传中…' : '上传为发票'}
                     </Button>
                   </div>
                 );

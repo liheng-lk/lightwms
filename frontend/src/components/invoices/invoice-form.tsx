@@ -122,12 +122,14 @@ export function InvoiceForm({ invoice, open, onOpenChange, onSuccess }: InvoiceF
     setFileError('');
     
     if (file) {
-      if (!ACCEPTED_INVOICE_TYPES.includes(file.type)) {
+      const extension = file.name.split('.').pop()?.toLowerCase() || '';
+      const accepted = ACCEPTED_INVOICE_TYPES.includes(file.type) || ['pdf', 'jpg', 'jpeg', 'png'].includes(extension);
+      if (!accepted) {
         setFileError('请上传 PDF、JPG 或 PNG 格式的文件');
         return;
       }
       setInvoiceFile(file);
-      if (file.type.startsWith('image/') || file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+      if (file.type.startsWith('image/') || extension === 'pdf' || ['jpg', 'jpeg', 'png'].includes(extension)) {
         recognizeInvoice.mutate(file, {
           onSuccess: (fields) => {
             if (fields.amount && !form.getValues('amount')) {

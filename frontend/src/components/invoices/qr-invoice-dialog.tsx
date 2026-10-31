@@ -38,23 +38,31 @@ export function QrInvoiceDialog({ open, onOpenChange, onImported }: QrInvoiceDia
   const createInvoice = useCreateInvoice();
   const recognizeInvoice = useRecognizeInvoice();
   const videoRef = useRef<HTMLVideoElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const stopCamera = useRef<(() => void) | null>(null);
+  const cameraHandled = useRef(false);
+  const amountTouched = useRef(false);
   const [file, setFile] = useState<File | null>(null);
   const [qrUrl, setQrUrl] = useState('');
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('采购');
   const [cameraOn, setCameraOn] = useState(false);
+  const [recognizing, setRecognizing] = useState(false);
 
   const reset = () => {
     stopCamera.current?.();
     stopCamera.current = null;
+    cameraHandled.current = false;
+    amountTouched.current = false;
     setCameraOn(false);
     setFile(null);
     setQrUrl('');
     setName('');
     setAmount('');
     setCategory('采购');
+    setRecognizing(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   useEffect(() => {
@@ -80,24 +88,28 @@ export function QrInvoiceDialog({ open, onOpenChange, onImported }: QrInvoiceDia
 
   const applyResult = (text: string, source: File | null) => {
     const url = text.trim();
+    if (source) setFile(source);
     if (!/^https:\/\//i.test(url)) {
-      toast.error('二维码里不是发票下载链接');
+      toast.error('二维码里不是发票下载链接，改为识别发票内容');
+      if (source) void fillFromImage(source);
       return;
     }
     const number = invoiceNumberFrom(url);
     setQrUrl(url);
     setName(number ? `数电发票${number}` : '二维码发票');
-    if (source) setFile(source);
     if (source) void fillFromImage(source);
   };
 
   const fillFromImage = async (selected: File) => {
+    setRecognizing(true);
     try {
       const fields = await recognizeInvoice.mutateAsync(selected);
-      if (fields.amount) setAmount(fields.amount);
-      if (fields.name) setName(fields.name);
+      if (fields.amount && !amountTouched.current) setAmount(fields.amount);
+      if (fields.name) setName((current) => current.startsWith('数电发票') || !current ? fields.name : current);
     } catch {
-      // The QR link is still usable when recognition fails.
+      // The picture can still be saved when recognition fails.
+    } finally {
+      setRecognizing(false);
     }
   };
 
@@ -110,7 +122,10 @@ export function QrInvoiceDialog({ open, onOpenChange, onImported }: QrInvoiceDia
       const result = await new BrowserQRCodeReader().decodeFromImageElement(image);
       applyResult(result.getText(), selected);
     } catch {
-      toast.error('没有识别到二维码，请换一张更清晰的图片');
+      setFile(selected);
+      setQrUrl('');
+      toast.message('没有识别到二维码，改为识别发票内容');
+      void fillFromImage(selected);
     } finally {
       URL.revokeObjectURL(imageUrl);
     }
@@ -119,8 +134,10 @@ export function QrInvoiceDialog({ open, onOpenChange, onImported }: QrInvoiceDia
   const startCamera = async () => {
     if (!videoRef.current) return;
     try {
+      cameraHandled.current = false;
       const controls = await new BrowserQRCodeReader().decodeFromVideoDevice(undefined, videoRef.current, (result) => {
-        if (!result) return;
+        if (!result || cameraHandled.current) return;
+        cameraHandled.current = true;
         applyResult(result.getText(), captureFrame());
         stopCamera.current?.();
         stopCamera.current = null;
@@ -146,10 +163,10 @@ export function QrInvoiceDialog({ open, onOpenChange, onImported }: QrInvoiceDia
     }
     try {
       await createInvoice.mutateAsync({
-        name: name.trim() || '二维码发票',
+        name: name.trim() || (qrUrl ? '二维码发票' : file.name.replace(/\.[^.]+$/, '') || '发票'),
         amount: value,
         category,
-        custom_type: '二维码发票',
+        custom_type: qrUrl ? '二维码发票' : '',
         project: qrUrl.slice(0, 200),
         file,
       });
@@ -167,10 +184,11 @@ export function QrInvoiceDialog({ open, onOpenChange, onImported }: QrInvoiceDia
         <DialogHeader>
           <DialogTitle>扫描二维码</DialogTitle>
           <DialogDescription>
-            邮件里如果只有发票二维码，点这里上传图片或打开摄像头。识别后填写金额，二维码图片会作为发票文件保存，下载链接记在项目字段里。
+            上传发票图片，或打开摄像头扫描二维码。识别到金额会自动填上；没有二维码也可以按发票内容登记。
           </DialogDescription>
         </DialogHeader>
         <Input
+          ref={fileInputRef}
           type="file"
           accept="image/png,image/jpeg,image/jpg"
           onChange={(event) => {
@@ -185,14 +203,25 @@ export function QrInvoiceDialog({ open, onOpenChange, onImported }: QrInvoiceDia
             {cameraOn ? '正在扫描…' : '打开摄像头'}
           </Button>
         </div>
-        {qrUrl && (
+        {(qrUrl || file) && (
           <div className="space-y-2 text-sm">
-            <a href={qrUrl} target="_blank" rel="noreferrer" className="break-all text-primary underline">
-              {qrUrl}
-            </a>
+            {qrUrl && (
+              <a href={qrUrl} target="_blank" rel="noreferrer" className="break-all text-primary underline">
+                {qrUrl}
+              </a>
+            )}
+            {recognizing && <p className="text-xs text-muted-foreground">正在识别金额…</p>}
             <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="发票名称" />
             <div className="grid grid-cols-2 gap-2">
-              <Input inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="金额" />
+              <Input
+                inputMode="decimal"
+                value={amount}
+                onChange={(event) => {
+                  amountTouched.current = true;
+                  setAmount(event.target.value);
+                }}
+                placeholder="金额"
+              />
               <Select value={category} onValueChange={setCategory}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
