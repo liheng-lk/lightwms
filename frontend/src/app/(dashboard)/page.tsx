@@ -9,7 +9,6 @@ import {
   Clock,
   Package,
   PackageMinus,
-  ScanBarcode,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -146,9 +145,9 @@ export default function DashboardPage() {
           </p>
         </div>
         <Button asChild size="lg" className="min-h-11 sm:min-h-10">
-          <Link href="/scan">
-            <ScanBarcode className="mr-2 h-5 w-5" />
-            扫码操作
+          <Link href="/items">
+            <Package className="mr-2 h-5 w-5" />
+            查找物品
           </Link>
         </Button>
       </div>
@@ -158,7 +157,7 @@ export default function DashboardPage() {
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
           <div>
             <p className="font-medium">部分统计暂时无法读取</p>
-            <p className="text-muted-foreground">不影响扫码、借还和库存操作，可稍后刷新工作台。</p>
+            <p className="text-muted-foreground">不影响借还和库存操作，可稍后刷新工作台。</p>
           </div>
         </div>
       )}
@@ -193,10 +192,10 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-2">
             <Button asChild variant="outline" className="h-auto min-h-14 justify-between px-4 py-3">
-              <Link href="/scan">
+              <Link href="/borrow-records">
                 <span className="flex items-center gap-3">
-                  <ScanBarcode className="h-5 w-5" />
-                  扫码借还/领补
+                  <ClipboardList className="h-5 w-5" />
+                  查看借用记录
                 </span>
                 <ArrowRight className="h-4 w-4" />
               </Link>
@@ -240,8 +239,8 @@ export default function DashboardPage() {
             <div className="flex gap-3">
               <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">1</div>
               <div>
-                <p className="font-medium">有条码时直接扫码</p>
-                <p className="text-muted-foreground">借用、归还、领用和补货不需要先进入物品列表。</p>
+                <p className="font-medium">从物品列表办理借还和领补</p>
+                <p className="text-muted-foreground">打开物品后可以直接借用、归还、领用或补货。</p>
               </div>
             </div>
             <div className="flex gap-3">

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Plus, Download, FileSpreadsheet, ChevronLeft, ChevronRight, X, Trash2 } from 'lucide-react';
+import { Plus, Download, FileSpreadsheet, ChevronLeft, ChevronRight, X, Trash2, Mail } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -24,6 +24,7 @@ import {
 import { InvoiceFilters } from '@/components/invoices/invoice-filters';
 import { InvoiceTable } from '@/components/invoices/invoice-table';
 import { InvoiceForm } from '@/components/invoices/invoice-form';
+import { MailboxImportDialog } from '@/components/invoices/mailbox-import-dialog';
 import { InvoiceStatusDialog } from '@/components/invoices/invoice-status-dialog';
 import { PageHelp } from '@/components/ui/help-tooltip';
 import {
@@ -45,6 +46,7 @@ export default function InvoicesPage() {
   const { canCreate, isSuperAdmin } = usePermissions();
 
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showMailboxDialog, setShowMailboxDialog] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState<Invoice | undefined>();
   const [statusInvoice, setStatusInvoice] = useState<Invoice | undefined>();
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -165,7 +167,7 @@ export default function InvoicesPage() {
             title="发票管理使用指南"
             tips={[
               '物品管理员可查看、登记和编辑全部库存相关发票',
-              '在新增物品时也可以同时上传发票',
+              '可授权多个邮箱，读取附件后填写金额再登记为发票',
               '可按类别、状态、月份、上传者和自定义日期范围筛选',
               '发票文件 ZIP 和报销清单 Excel 会继承当前筛选条件',
               '报销状态审批及批量操作仅超级管理员可操作',
@@ -198,10 +200,16 @@ export default function InvoicesPage() {
             </>
           )}
           {canCreate() && (
-            <Button onClick={() => setShowCreateDialog(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              新增发票
-            </Button>
+            <>
+              <Button variant="outline" onClick={() => setShowMailboxDialog(true)}>
+                <Mail className="h-4 w-4 mr-2" />
+                从邮箱导入
+              </Button>
+              <Button onClick={() => setShowCreateDialog(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                新增发票
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -295,6 +303,11 @@ export default function InvoicesPage() {
         open={showCreateDialog}
         onOpenChange={setShowCreateDialog}
         onSuccess={handleSuccess}
+      />
+      <MailboxImportDialog
+        open={showMailboxDialog}
+        onOpenChange={setShowMailboxDialog}
+        onImported={handleSuccess}
       />
       <InvoiceForm
         invoice={editingInvoice}

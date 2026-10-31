@@ -2,8 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { Search, LogOut, User, Menu, ScanBarcode, CircleArrowUp } from 'lucide-react';
+import { Search, LogOut, User, Menu, CircleArrowUp } from 'lucide-react';
 import { UpdateNoticeButton, UpdateNoticeDialog, useVersionStatus } from './update-notice';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -74,13 +73,6 @@ export function Header() {
 
       <UpdateNoticeButton status={versionStatus} onClick={() => setUpdateDialogOpen(true)} />
       <UpdateNoticeDialog open={updateDialogOpen} onOpenChange={setUpdateDialogOpen} status={versionStatus} />
-
-      <Link href="/scan" className="md:hidden">
-        <Button variant="outline" size="icon" className="border-primary/50 text-primary hover:bg-primary/10">
-          <ScanBarcode className="h-5 w-5" />
-          <span className="sr-only">扫码</span>
-        </Button>
-      </Link>
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
