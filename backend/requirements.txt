@@ -21,8 +21,8 @@ Pillow>=10.0,<11.0
 # Barcode generation
 python-barcode>=0.15,<1.0
 
-# Mailbox authorization secrets
-cryptography>=42,<46
+# Invoice image recognition. Mobile PP-OCRv4 models ship inside the package.
+rapidocr-onnxruntime>=1.4,<1.5
 
 # Excel support
 openpyxl>=3.1,<4.0

@@ -199,3 +199,27 @@ class MailboxImportView(APIView):
         except IntegrityError:
             return _error('这个附件已经导入过。', 'ALREADY_IMPORTED', status.HTTP_409_CONFLICT)
         return Response(InvoiceSerializer(invoice).data, status=status.HTTP_201_CREATED)
+
+
+class MailboxRecognizeView(APIView):
+    permission_classes = [IsItemManagerOrSuperAdmin]
+
+    def post(self, request, pk: int):
+        account = _owned(request, pk)
+        if account is None:
+            return _error('邮箱不存在。', 'MAILBOX_NOT_FOUND', status.HTTP_404_NOT_FOUND)
+        uid = str(request.data.get('uid') or '').strip()
+        try:
+            part_index = int(request.data.get('part_index'))
+        except (TypeError, ValueError):
+            return _error('请选择一个附件。')
+        try:
+            secret = decrypt_secret(account.secret_encrypted)
+            attachment = fetch_attachment(account, secret, uid, part_index)
+            from .invoice_ocr import recognize_invoice_bytes
+
+            return Response(recognize_invoice_bytes(attachment['content']))
+        except (MailboxConnectionError, ValueError) as exc:
+            return _error(str(exc))
+        except Exception:
+            return _error('发票识别失败，请手填金额。')
