@@ -1,6 +1,7 @@
 """
 Base settings for LightWMS project.
 """
+import hashlib
 import os
 from pathlib import Path
 from datetime import timedelta
@@ -10,6 +11,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-change-me-in-production')
+
+
+def _jwt_signing_key(secret: str) -> str:
+    """HS256 warns below 32 bytes. Stretch short secrets; leave long ones unchanged."""
+    if len(secret.encode()) >= 32:
+        return secret
+    return hashlib.sha256(secret.encode()).hexdigest()
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
@@ -152,7 +160,7 @@ SIMPLE_JWT = {
     'BLACKLIST_AFTER_ROTATION': True,
     'UPDATE_LAST_LOGIN': True,
     'ALGORITHM': 'HS256',
-    'SIGNING_KEY': SECRET_KEY,
+    'SIGNING_KEY': _jwt_signing_key(SECRET_KEY),
     'AUTH_HEADER_TYPES': ('Bearer',),
     'AUTH_HEADER_NAME': 'HTTP_AUTHORIZATION',
     'USER_ID_FIELD': 'id',
