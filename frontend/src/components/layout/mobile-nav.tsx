@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import {
   Package, ClipboardList, FolderTree, MapPin, LayoutDashboard, PackageMinus,
   PackagePlus, Warehouse, Users, Ticket, Settings, ScanBarcode, FileText, Receipt,
+  KeyRound,
 } from 'lucide-react';
 import { SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
@@ -34,6 +35,7 @@ const navItems: NavItem[] = [
   { title: '分类管理', href: '/categories', icon: FolderTree, roles: managerRoles },
   { title: '库位管理', href: '/locations', icon: MapPin, roles: managerRoles },
   { title: '仓库管理', href: '/warehouses', icon: Warehouse, roles: managerRoles },
+  { title: '账户设置', href: '/account', icon: KeyRound },
   { title: '审计日志', href: '/audit-logs', icon: FileText, roles: ['super_admin'] },
   { title: '用户管理', href: '/users', icon: Users, roles: ['super_admin'] },
   { title: '邀请码管理', href: '/invite-codes', icon: Ticket, roles: ['super_admin'] },

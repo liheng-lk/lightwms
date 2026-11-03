@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Loader2 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,11 +17,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { useChangePassword } from '@/lib/hooks/use-users';
+import { useAuth } from '@/providers/auth-provider';
 
 const changePasswordSchema = z.object({
   old_password: z.string().min(1, '请输入当前密码'),
   new_password: z.string()
-    .min(6, '新密码至少6个字符')
+    .min(8, '新密码至少8个字符')
     .max(50, '新密码最多50个字符'),
   confirm_password: z.string(),
 }).refine((data) => data.new_password === data.confirm_password, {
@@ -37,6 +39,8 @@ interface ChangePasswordDialogProps {
 
 export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialogProps) {
   const { mutate: changePassword, isPending } = useChangePassword();
+  const { logout } = useAuth();
+  const router = useRouter();
 
   const {
     register,
@@ -57,6 +61,14 @@ export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialo
         onSuccess: () => {
           reset();
           onOpenChange(false);
+          // The backend invalidates every previously issued token after a
+          // password change. Clear the browser session immediately instead of
+          // leaving the user on a page with stale credentials that will fail
+          // on the next API request.
+          void logout().finally(() => {
+            router.replace('/login');
+            router.refresh();
+          });
         },
       }
     );
@@ -73,7 +85,7 @@ export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialo
         <DialogHeader>
           <DialogTitle>修改密码</DialogTitle>
           <DialogDescription>
-            请输入当前密码和新密码
+            请输入当前密码和新密码。修改成功后需要使用新密码重新登录。
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
@@ -82,6 +94,7 @@ export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialo
             <Input
               id="old_password"
               type="password"
+              autoComplete="current-password"
               placeholder="请输入当前密码"
               disabled={isPending}
               {...register('old_password')}
@@ -96,7 +109,8 @@ export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialo
             <Input
               id="new_password"
               type="password"
-              placeholder="请输入新密码（至少6个字符）"
+              autoComplete="new-password"
+              placeholder="请输入新密码（至少8个字符）"
               disabled={isPending}
               {...register('new_password')}
             />
@@ -110,6 +124,7 @@ export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialo
             <Input
               id="confirm_password"
               type="password"
+              autoComplete="new-password"
               placeholder="请再次输入新密码"
               disabled={isPending}
               {...register('confirm_password')}
