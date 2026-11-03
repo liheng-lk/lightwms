@@ -3,13 +3,13 @@ URL configuration for users app.
 """
 from django.urls import path
 
+from .query_views import UserListView
 from .security_views import InviteCodeDetailView, LogoutView
 from .user_delete_view import UserDeleteView
 from .views import (
     LoginView,
     RefreshView,
     UserMeView,
-    UserListView,
     UserDisableView,
     UserResetPasswordView,
     UserCreateView,
