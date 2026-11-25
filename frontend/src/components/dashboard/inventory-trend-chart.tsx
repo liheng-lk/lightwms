@@ -29,17 +29,18 @@ const COLORS = {
 
 export function InventoryTrendChart({ data, borrowData, isLoading }: InventoryTrendChartProps) {
   const chartData = useMemo(() => {
-    if (!data.length) return { points: [], maxY: 0, labels: [] };
+    if (!data.length) return { points: [], borrowPoints: [] as DataPoint[], maxY: 0, labels: [] };
 
+    const borrowPointsArr: DataPoint[] = borrowData ?? [];
     const allValues = [
       ...data.map((d) => d.count),
-      ...(borrowData?.map((d) => d.count) ?? []),
+      ...borrowPointsArr.map((d) => d.count),
     ];
     const maxY = Math.max(...allValues, 1);
 
     return {
       points: data,
-      borrowPoints: borrowData ?? [],
+      borrowPoints: borrowPointsArr,
       maxY,
       labels: data.map((d) => formatMonth(d.month)),
     };
