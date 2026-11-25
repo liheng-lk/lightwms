@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { RotateCcw, Palette, Image, ImageIcon, KeyRound } from 'lucide-react';
+import Link from 'next/link';
+import { RotateCcw, Palette, Image, ImageIcon, KeyRound, Webhook } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ThemePicker } from '@/components/settings/theme-picker';
@@ -107,6 +108,26 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent>
             <LogoPicker />
+          </CardContent>
+        </Card>
+
+        {/* Webhook 设置 */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Webhook className="h-5 w-5" />
+              Webhook 管理
+            </CardTitle>
+            <CardDescription>
+              配置外部系统的事件通知端点，实现数据同步
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild variant="outline">
+              <Link href="/settings/webhooks">
+                管理 Webhook 端点
+              </Link>
+            </Button>
           </CardContent>
         </Card>
       </div>

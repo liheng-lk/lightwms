@@ -4,6 +4,7 @@ import string
 
 from django.contrib.auth.hashers import check_password
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.audit.models import AuditLog, AuditAction, TargetType
@@ -88,8 +89,15 @@ class UserManagementService:
             )
             return user, temp_password
 
-    def list_users(self, role: str = None, is_active: bool = None, date_from=None, date_to=None):
+    def list_users(self, role: str = None, is_active: bool = None, date_from=None, date_to=None, search: str = None):
         queryset = User.objects.all().order_by('-created_at', '-id')
+        if search:
+            queryset = queryset.filter(
+                Q(username__icontains=search) |
+                Q(phone__icontains=search) |
+                Q(email__icontains=search) |
+                Q(department__icontains=search)
+            )
         if role is not None:
             queryset = queryset.filter(role=role)
         if is_active is not None:

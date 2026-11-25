@@ -4,30 +4,25 @@ import {
   createContext,
   useContext,
   useCallback,
+  useEffect,
   ReactNode,
 } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { User } from '@/lib/types';
+import { safeJsonParse } from '@/lib/utils/safe-json-parse';
 
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  mustChangePassword: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   refetchUser: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-async function safeJsonParse(response: Response): Promise<any> {
-  const text = await response.text();
-  try {
-    return JSON.parse(text);
-  } catch {
-    return { detail: text || 'Unknown error' };
-  }
-}
 
 async function fetchMe(): Promise<User | null> {
   const response = await fetch('/api/auth/me/');
@@ -57,6 +52,8 @@ async function doLogout(): Promise<void> {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
+  const router = useRouter();
+  const pathname = usePathname();
   const { data: user, isLoading, refetch } = useQuery({
     queryKey: ['auth', 'me'],
     queryFn: fetchMe,
@@ -65,6 +62,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });
+
+  const mustChangePassword = !!user?.must_change_password;
+
+  // 强制修改密码：如果用户需要修改密码且不在设置页面，重定向到设置页面
+  useEffect(() => {
+    if (mustChangePassword && pathname !== '/settings') {
+      router.replace('/settings');
+    }
+  }, [mustChangePassword, pathname, router]);
 
   const login = useCallback(async (username: string, password: string) => {
     await doLogin(username, password);
@@ -83,6 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user: user ?? null,
       isLoading,
       isAuthenticated: !!user,
+      mustChangePassword,
       login,
       logout,
       refetchUser,

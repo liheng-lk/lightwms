@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Package, ClipboardList, FolderTree, MapPin, LayoutDashboard, PackageMinus,
-  PackagePlus, Warehouse, Users, Ticket, Settings, Receipt, ScanBarcode, FileText,
+  PackagePlus, Warehouse, Users, Ticket, Settings, Receipt, FileText,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/providers/auth-provider';
@@ -24,7 +24,6 @@ const managerRoles: NavRole[] = ['super_admin', 'item_manager'];
 
 const navItems: NavItem[] = [
   { title: '工作台', href: '/', icon: LayoutDashboard },
-  { title: '扫码操作', href: '/scan', icon: ScanBarcode, highlight: true },
   { title: '物品管理', href: '/items', icon: Package },
   { title: '借用记录', href: '/borrow-records', icon: ClipboardList },
   { title: '领用记录', href: '/take-records', icon: PackageMinus },

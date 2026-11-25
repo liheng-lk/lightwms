@@ -10,6 +10,7 @@ from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiParamet
 from core.permissions import IsSuperAdmin, IsItemManagerOrSuperAdmin
 from core.pagination import StandardPagination
 from core.exceptions import BusinessConflictError
+from core.utils import get_client_info
 
 from .models import Warehouse, Location, Category
 from .serializers import (
@@ -72,8 +73,7 @@ class WarehouseListCreateView(APIView):
         serializer = WarehouseCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
-        ip = getattr(request, 'client_ip', request.META.get('REMOTE_ADDR', ''))
-        user_agent = getattr(request, 'user_agent', request.META.get('HTTP_USER_AGENT', ''))
+        ip, user_agent = get_client_info(request)
         
         warehouse = WarehouseService.create(
             code=serializer.validated_data['code'],
@@ -119,8 +119,7 @@ class WarehouseDetailView(APIView):
         serializer = WarehouseUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
-        ip = getattr(request, 'client_ip', request.META.get('REMOTE_ADDR', ''))
-        user_agent = getattr(request, 'user_agent', request.META.get('HTTP_USER_AGENT', ''))
+        ip, user_agent = get_client_info(request)
         
         warehouse = WarehouseService.update(
             warehouse_id=pk,
@@ -140,8 +139,7 @@ class WarehouseDeactivateView(APIView):
     
     @extend_schema(responses={200: WarehouseSerializer, 404: OpenApiResponse(description='Not found')}, tags=['Warehouses'], summary='Deactivate warehouse')
     def post(self, request, pk):
-        ip = getattr(request, 'client_ip', request.META.get('REMOTE_ADDR', ''))
-        user_agent = getattr(request, 'user_agent', request.META.get('HTTP_USER_AGENT', ''))
+        ip, user_agent = get_client_info(request)
         
         try:
             warehouse = WarehouseService.deactivate(
@@ -170,8 +168,7 @@ class WarehouseDeleteView(APIView):
         summary='Delete warehouse permanently',
     )
     def delete(self, request, pk):
-        ip = getattr(request, 'client_ip', request.META.get('REMOTE_ADDR', ''))
-        user_agent = getattr(request, 'user_agent', request.META.get('HTTP_USER_AGENT', ''))
+        ip, user_agent = get_client_info(request)
         
         try:
             WarehouseService.delete(
@@ -239,8 +236,7 @@ class LocationListCreateView(APIView):
         serializer = LocationCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
-        ip = getattr(request, 'client_ip', request.META.get('REMOTE_ADDR', ''))
-        user_agent = getattr(request, 'user_agent', request.META.get('HTTP_USER_AGENT', ''))
+        ip, user_agent = get_client_info(request)
         
         try:
             location = LocationService.create(
@@ -324,8 +320,7 @@ class LocationDetailView(APIView):
         serializer = LocationUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
-        ip = getattr(request, 'client_ip', request.META.get('REMOTE_ADDR', ''))
-        user_agent = getattr(request, 'user_agent', request.META.get('HTTP_USER_AGENT', ''))
+        ip, user_agent = get_client_info(request)
         
         location = LocationService.update(
             location_id=pk,
@@ -349,8 +344,7 @@ class LocationDeactivateView(APIView):
         summary='Deactivate location',
     )
     def post(self, request, pk):
-        ip = getattr(request, 'client_ip', request.META.get('REMOTE_ADDR', ''))
-        user_agent = getattr(request, 'user_agent', request.META.get('HTTP_USER_AGENT', ''))
+        ip, user_agent = get_client_info(request)
         
         try:
             location = LocationService.deactivate(
@@ -410,8 +404,7 @@ class CategoryListCreateView(APIView):
         serializer = CategoryCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
-        ip = getattr(request, 'client_ip', request.META.get('REMOTE_ADDR', ''))
-        user_agent = getattr(request, 'user_agent', request.META.get('HTTP_USER_AGENT', ''))
+        ip, user_agent = get_client_info(request)
         
         try:
             category = CategoryService.create(
@@ -479,8 +472,7 @@ class CategoryDetailView(APIView):
         serializer = CategoryUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
-        ip = getattr(request, 'client_ip', request.META.get('REMOTE_ADDR', ''))
-        user_agent = getattr(request, 'user_agent', request.META.get('HTTP_USER_AGENT', ''))
+        ip, user_agent = get_client_info(request)
         
         category = CategoryService.update(
             category_id=pk,
@@ -504,8 +496,7 @@ class CategoryDeactivateView(APIView):
         summary='Deactivate category',
     )
     def post(self, request, pk):
-        ip = getattr(request, 'client_ip', request.META.get('REMOTE_ADDR', ''))
-        user_agent = getattr(request, 'user_agent', request.META.get('HTTP_USER_AGENT', ''))
+        ip, user_agent = get_client_info(request)
         
         try:
             category = CategoryService.deactivate(
@@ -534,8 +525,7 @@ class CategoryDeleteView(APIView):
         summary='Delete category permanently',
     )
     def delete(self, request, pk):
-        ip = getattr(request, 'client_ip', request.META.get('REMOTE_ADDR', ''))
-        user_agent = getattr(request, 'user_agent', request.META.get('HTTP_USER_AGENT', ''))
+        ip, user_agent = get_client_info(request)
         
         try:
             CategoryService.delete(
@@ -587,6 +577,24 @@ class ItemListCreateView(APIView):
         
         # Prefetch images for primary_image field
         qs = qs.prefetch_related('images')
+        
+        # Annotate borrowed_quantity at the queryset level to avoid N+1
+        # queries when serializing reusable items.
+        from apps.operations.models import BorrowRecord, BorrowStatus
+        from django.db.models import Subquery, OuterRef, Sum, Value, IntegerField
+        from django.db.models.functions import Coalesce
+        borrowed_subquery = BorrowRecord.objects.filter(
+            item_id=OuterRef('pk'),
+            status=BorrowStatus.ACTIVE,
+        ).values('item_id').annotate(
+            total=Sum('quantity')
+        ).values('total')
+        qs = qs.annotate(
+            _borrowed_quantity=Coalesce(
+                Subquery(borrowed_subquery, output_field=IntegerField()),
+                Value(0),
+            )
+        )
         
         return qs
     
@@ -653,8 +661,7 @@ class ItemListCreateView(APIView):
         serializer = ItemCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
-        ip = getattr(request, 'client_ip', request.META.get('REMOTE_ADDR', ''))
-        user_agent = getattr(request, 'user_agent', request.META.get('HTTP_USER_AGENT', ''))
+        ip, user_agent = get_client_info(request)
         
         data = serializer.validated_data
         dto = ItemCreateDTO(
@@ -742,8 +749,7 @@ class ItemDetailView(APIView):
         serializer = ItemUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
-        ip = getattr(request, 'client_ip', request.META.get('REMOTE_ADDR', ''))
-        user_agent = getattr(request, 'user_agent', request.META.get('HTTP_USER_AGENT', ''))
+        ip, user_agent = get_client_info(request)
         
         data = serializer.validated_data
         dto = ItemUpdateDTO(
@@ -796,8 +802,7 @@ class ItemDetailView(APIView):
         
         # item_manager can delete all items (no ownership check)
         
-        ip = getattr(request, 'client_ip', request.META.get('REMOTE_ADDR', ''))
-        user_agent = getattr(request, 'user_agent', request.META.get('HTTP_USER_AGENT', ''))
+        ip, user_agent = get_client_info(request)
         
         ItemService.delete(
             item_id=pk,
@@ -829,8 +834,7 @@ class ItemDeactivateView(APIView):
         
         # item_manager can deactivate all items (no ownership check)
         
-        ip = getattr(request, 'client_ip', request.META.get('REMOTE_ADDR', ''))
-        user_agent = getattr(request, 'user_agent', request.META.get('HTTP_USER_AGENT', ''))
+        ip, user_agent = get_client_info(request)
         
         item = ItemService.deactivate(
             item_id=pk,
@@ -868,8 +872,7 @@ class ItemDeleteView(APIView):
         
         # item_manager can delete all items (no ownership check)
         
-        ip = getattr(request, 'client_ip', request.META.get('REMOTE_ADDR', ''))
-        user_agent = getattr(request, 'user_agent', request.META.get('HTTP_USER_AGENT', ''))
+        ip, user_agent = get_client_info(request)
         
         try:
             ItemService.delete(
@@ -912,8 +915,7 @@ class ItemGenerateBarcodeView(APIView):
         
         # item_manager can generate barcodes for all items (no ownership check)
         
-        ip = getattr(request, 'client_ip', request.META.get('REMOTE_ADDR', ''))
-        user_agent = getattr(request, 'user_agent', request.META.get('HTTP_USER_AGENT', ''))
+        ip, user_agent = get_client_info(request)
         
         result = ItemService.generate_barcode(
             item_id=pk,
@@ -1216,8 +1218,7 @@ Upload an image for an item.
         serializer = ImageUploadSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
-        ip = getattr(request, 'client_ip', request.META.get('REMOTE_ADDR', ''))
-        user_agent = getattr(request, 'user_agent', request.META.get('HTTP_USER_AGENT', ''))
+        ip, user_agent = get_client_info(request)
         
         result = ImageService.upload(
             item_id=pk,
@@ -1320,8 +1321,7 @@ the most recently uploaded image becomes the new primary.
                 status=status.HTTP_404_NOT_FOUND
             )
         
-        ip = getattr(request, 'client_ip', request.META.get('REMOTE_ADDR', ''))
-        user_agent = getattr(request, 'user_agent', request.META.get('HTTP_USER_AGENT', ''))
+        ip, user_agent = get_client_info(request)
         
         ImageService.delete(
             image_id=image_id,
@@ -1391,8 +1391,7 @@ class ItemImageSetPrimaryView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
         
-        ip = getattr(request, 'client_ip', request.META.get('REMOTE_ADDR', ''))
-        user_agent = getattr(request, 'user_agent', request.META.get('HTTP_USER_AGENT', ''))
+        ip, user_agent = get_client_info(request)
         
         image = ImageService.set_primary(
             image_id=image_id,
@@ -1461,8 +1460,7 @@ class ItemCreateWithInvoiceView(APIView):
         serializer = ItemCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
-        ip = getattr(request, 'client_ip', request.META.get('REMOTE_ADDR', ''))
-        user_agent = getattr(request, 'user_agent', request.META.get('HTTP_USER_AGENT', ''))
+        ip, user_agent = get_client_info(request)
         
         data = serializer.validated_data
         dto = ItemCreateDTO(
@@ -1591,8 +1589,7 @@ class ItemBatchDeleteView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        ip = getattr(request, 'client_ip', request.META.get('REMOTE_ADDR', ''))
-        user_agent = getattr(request, 'user_agent', request.META.get('HTTP_USER_AGENT', ''))
+        ip, user_agent = get_client_info(request)
         
         deleted_count = 0
         errors = []
@@ -1652,8 +1649,7 @@ class WarehouseBatchDeleteView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        ip = getattr(request, 'client_ip', request.META.get('REMOTE_ADDR', ''))
-        user_agent = getattr(request, 'user_agent', request.META.get('HTTP_USER_AGENT', ''))
+        ip, user_agent = get_client_info(request)
         
         deleted_count = 0
         errors = []
@@ -1713,8 +1709,7 @@ class CategoryBatchDeleteView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        ip = getattr(request, 'client_ip', request.META.get('REMOTE_ADDR', ''))
-        user_agent = getattr(request, 'user_agent', request.META.get('HTTP_USER_AGENT', ''))
+        ip, user_agent = get_client_info(request)
         
         deleted_count = 0
         errors = []
@@ -1783,8 +1778,7 @@ class ItemBatchUpdateLocationView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        ip = getattr(request, 'client_ip', request.META.get('REMOTE_ADDR', ''))
-        user_agent = getattr(request, 'user_agent', request.META.get('HTTP_USER_AGENT', ''))
+        ip, user_agent = get_client_info(request)
         
         try:
             updated_count = ItemService.batch_update_location(
@@ -1852,8 +1846,7 @@ class ItemBatchUpdateOwnerView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        ip = getattr(request, 'client_ip', request.META.get('REMOTE_ADDR', ''))
-        user_agent = getattr(request, 'user_agent', request.META.get('HTTP_USER_AGENT', ''))
+        ip, user_agent = get_client_info(request)
         
         try:
             updated_count = ItemService.batch_update_owner(

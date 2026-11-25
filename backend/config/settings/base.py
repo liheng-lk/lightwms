@@ -164,7 +164,7 @@ SIMPLE_JWT = {
 SPECTACULAR_SETTINGS = {
     'TITLE': 'LightWMS API',
     'DESCRIPTION': '轻量级仓库管理系统 API',
-    'VERSION': '1.0.0',
+    'VERSION': '1.3.0',
     'SERVE_INCLUDE_SCHEMA': False,
     'COMPONENT_SPLIT_REQUEST': True,
     'SECURITY': [{'Bearer': []}],

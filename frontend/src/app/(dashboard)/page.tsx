@@ -13,6 +13,10 @@ import {
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { InventoryTrendChart } from '@/components/dashboard/inventory-trend-chart';
+import { BorrowStatsChart } from '@/components/dashboard/borrow-stats-chart';
+import { CategoryDistributionChart } from '@/components/dashboard/category-distribution-chart';
+import { useDashboardStats } from '@/lib/hooks/use-dashboard';
 
 interface DashboardMetrics {
   items: number | null;
@@ -60,6 +64,9 @@ export default function DashboardPage() {
   const [hasPartialError, setHasPartialError] = useState(false);
 
   const today = useMemo(localDateString, []);
+
+  // Fetch dashboard chart data
+  const { data: stats, isLoading: statsLoading } = useDashboardStats();
 
   useEffect(() => {
     let cancelled = false;
@@ -185,7 +192,25 @@ export default function DashboardPage() {
         })}
       </div>
 
+      {/* Data Visualization Charts */}
       <div className="grid gap-4 lg:grid-cols-2">
+        <InventoryTrendChart
+          data={stats?.inventory_trends ?? []}
+          borrowData={stats?.borrow_trends ?? []}
+          isLoading={statsLoading}
+        />
+        <BorrowStatsChart
+          data={stats?.top_borrowed ?? []}
+          isLoading={statsLoading}
+        />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <CategoryDistributionChart
+          data={stats?.category_distribution ?? []}
+          isLoading={statsLoading}
+        />
+
         <Card>
           <CardHeader>
             <CardTitle>高频操作</CardTitle>
@@ -230,37 +255,37 @@ export default function DashboardPage() {
             </Button>
           </CardContent>
         </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>使用建议</CardTitle>
-            <CardDescription>按真实仓库现场的操作优先级组织，而不是按数据库模块组织。</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4 text-sm">
-            <div className="flex gap-3">
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">1</div>
-              <div>
-                <p className="font-medium">有条码时直接扫码</p>
-                <p className="text-muted-foreground">借用、归还、领用和补货不需要先进入物品列表。</p>
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">2</div>
-              <div>
-                <p className="font-medium">先处理缺货和未归还</p>
-                <p className="text-muted-foreground">工作台把需要关注的状态放在普通管理操作之前。</p>
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">3</div>
-              <div>
-                <p className="font-medium">管理配置放到低频区域</p>
-                <p className="text-muted-foreground">仓库、库位、分类和系统设置不应干扰日常出入库路径。</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>使用建议</CardTitle>
+          <CardDescription>按真实仓库现场的操作优先级组织，而不是按数据库模块组织。</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4 text-sm">
+          <div className="flex gap-3">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">1</div>
+            <div>
+              <p className="font-medium">有条码时直接扫码</p>
+              <p className="text-muted-foreground">借用、归还、领用和补货不需要先进入物品列表。</p>
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">2</div>
+            <div>
+              <p className="font-medium">先处理缺货和未归还</p>
+              <p className="text-muted-foreground">工作台把需要关注的状态放在普通管理操作之前。</p>
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">3</div>
+            <div>
+              <p className="font-medium">管理配置放到低频区域</p>
+              <p className="text-muted-foreground">仓库、库位、分类和系统设置不应干扰日常出入库路径。</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

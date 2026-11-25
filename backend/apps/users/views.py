@@ -494,6 +494,12 @@ class UserListView(APIView):
                 required=False,
                 type=int,
             ),
+            OpenApiParameter(
+                name='search',
+                description='Search by username, phone, email or department',
+                required=False,
+                type=str,
+            ),
         ],
         responses={
             200: UserListSerializer(many=True),
@@ -511,6 +517,7 @@ class UserListView(APIView):
         is_active = request.query_params.get('is_active')
         date_from = request.query_params.get('date_from')
         date_to = request.query_params.get('date_to')
+        search = request.query_params.get('search')
         
         # Parse is_active
         if is_active is not None:
@@ -535,6 +542,7 @@ class UserListView(APIView):
             is_active=is_active,
             date_from=date_from,
             date_to=date_to,
+            search=search,
         )
         
         # Apply pagination

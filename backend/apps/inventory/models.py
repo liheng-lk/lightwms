@@ -8,6 +8,8 @@ This module contains models for:
 - Item: Physical items in the warehouse
 - ItemImage: Images associated with items
 """
+from functools import cached_property
+
 from django.db import models
 from django.conf import settings
 from django.contrib.postgres.search import SearchVectorField
@@ -133,7 +135,7 @@ class Location(models.Model):
         status = '' if self.is_active else ' [Inactive]'
         return f"{self.warehouse.code}/{self.code} - {self.name}{status}"
     
-    @property
+    @cached_property
     def full_path(self) -> str:
         """
         Get the full path from root to this location.
@@ -197,7 +199,7 @@ class Category(models.Model):
         status = '' if self.is_active else ' [Inactive]'
         return f"{self.name}{status}"
     
-    @property
+    @cached_property
     def full_path(self) -> str:
         """
         Get the full path from root to this category.

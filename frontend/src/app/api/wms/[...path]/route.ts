@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthCookies, setAuthCookies, clearAuthCookies } from '@/lib/auth/cookies';
+import { safeJsonParse } from '@/lib/utils/safe-json-parse';
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://backend:8000';
 const BACKEND_ORIGIN = new URL(BACKEND_URL).origin;
@@ -23,15 +24,6 @@ const FILTERED_HEADERS = new Set([
   'x-forwarded-for',
 ]);
 
-// 安全 JSON 解析：避免非 JSON 响应导致崩溃
-async function safeJsonParse(response: Response): Promise<any> {
-  const text = await response.text();
-  try {
-    return JSON.parse(text);
-  } catch {
-    return { detail: text || 'Unknown error' };
-  }
-}
 
 function unsafeRedirectResponse(): Response {
   return new Response(

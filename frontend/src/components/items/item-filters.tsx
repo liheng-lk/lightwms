@@ -21,7 +21,7 @@ const statusOptions = [
 ];
 
 const typeOptions = [
-  { value: 'unique', label: '唯一物品' },
+  { value: 'reusable', label: '唯一物品' },
   { value: 'consumable', label: '消耗品' },
 ];
 

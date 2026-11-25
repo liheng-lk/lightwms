@@ -266,10 +266,18 @@ class ItemSerializer(serializers.ModelSerializer):
     
     def get_available_quantity(self, obj):
         """Get available quantity for borrowing/taking."""
+        # Use annotated value from queryset if available (avoids N+1).
+        if hasattr(obj, '_borrowed_quantity'):
+            if obj.type != 'reusable':
+                return obj.quantity
+            return obj.quantity - obj._borrowed_quantity
         return obj.available_quantity
     
     def get_borrowed_quantity(self, obj):
         """Get currently borrowed quantity (for reusable items)."""
+        # Use annotated value from queryset if available (avoids N+1).
+        if hasattr(obj, '_borrowed_quantity'):
+            return obj._borrowed_quantity if obj.type == 'reusable' else 0
         return obj.borrowed_quantity
     
     def get_current_borrower(self, obj):

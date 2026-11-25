@@ -4,6 +4,8 @@ URL configuration for inventory app.
 from django.urls import path
 
 from .search_views import SearchView
+from .advanced_search_views import AdvancedSearchView
+from .dashboard_views import DashboardStatsView
 from .reference_views import (
     WarehouseListCreateView,
     WarehouseDetailView,
@@ -88,4 +90,6 @@ urlpatterns = [
     path('items/<int:pk>/images/<int:image_id>/set-primary/', ItemImageSetPrimaryView.as_view(), name='item-image-set-primary'),
 
     path('search/', SearchView.as_view(), name='search'),
+    path('items/advanced-search/', AdvancedSearchView.as_view(), name='advanced-search'),
+    path('dashboard/stats/', DashboardStatsView.as_view(), name='dashboard-stats'),
 ]

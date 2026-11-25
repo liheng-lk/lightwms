@@ -16,6 +16,8 @@ class RequestContextMiddleware:
 
     def __init__(self, get_response):
         self.get_response = get_response
+        # Parse CIDR config once at startup instead of on every request.
+        self._trusted_networks = self._parse_trusted_proxy_networks()
 
     def __call__(self, request):
         request.client_ip = self.get_client_ip(request)
@@ -29,7 +31,9 @@ class RequestContextMiddleware:
         except ValueError:
             return None
 
-    def _trusted_proxy_networks(self):
+    @staticmethod
+    def _parse_trusted_proxy_networks():
+        """Parse TRUSTED_PROXY_CIDRS once and return a tuple of networks."""
         networks = []
         for cidr in getattr(settings, 'TRUSTED_PROXY_CIDRS', []):
             try:
@@ -38,7 +42,10 @@ class RequestContextMiddleware:
                 # Invalid deployment config must not make arbitrary peers
                 # trusted; skip it and fall back to REMOTE_ADDR.
                 continue
-        return networks
+        return tuple(networks)
+
+    def _trusted_proxy_networks(self):
+        return self._trusted_networks
 
     def _is_trusted_proxy(self, remote_ip) -> bool:
         return remote_ip is not None and any(

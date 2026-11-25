@@ -289,6 +289,9 @@ class InvoiceStatusUpdateView(APIView):
                 status=status.HTTP_403_FORBIDDEN
             )
 
+    def patch(self, request, pk):
+        return self.post(request, pk)
+
 
 class InvoiceExportView(APIView):
     """Export invoice files to ZIP."""

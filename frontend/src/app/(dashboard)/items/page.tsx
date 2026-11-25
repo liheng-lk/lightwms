@@ -27,7 +27,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { ChevronLeft, ChevronRight, Plus, Upload, Download, FileSpreadsheet, MoreHorizontal, Printer, Trash2, X, MapPin, User } from 'lucide-react';
-import { ItemFilters } from '@/components/items/item-filters';
+import { AdvancedSearchPanel } from '@/components/items/advanced-search-panel';
 import { ItemTable } from '@/components/items/item-table';
 import { ItemForm } from '@/components/items/item-form';
 import { ImportDialog } from '@/components/import-export/import-dialog';
@@ -70,6 +70,11 @@ export default function ItemsPage() {
   const location = searchParams.get('location') ? Number(searchParams.get('location')) : undefined;
   const status = searchParams.get('status') || undefined;
   const item_type = searchParams.get('type') || undefined;
+  const owner = searchParams.get('owner') ? Number(searchParams.get('owner')) : undefined;
+  const date_from = searchParams.get('date_from') || undefined;
+  const date_to = searchParams.get('date_to') || undefined;
+  const quantity_min = searchParams.get('quantity_min') ? Number(searchParams.get('quantity_min')) : undefined;
+  const quantity_max = searchParams.get('quantity_max') ? Number(searchParams.get('quantity_max')) : undefined;
   const page = Number(searchParams.get('page')) || 1;
   const page_size = Number(searchParams.get('page_size')) || 20;
   
@@ -79,6 +84,11 @@ export default function ItemsPage() {
     location,
     status,
     item_type,
+    owner,
+    date_from,
+    date_to,
+    quantity_min,
+    quantity_max,
     page,
     page_size,
   });
@@ -267,8 +277,8 @@ export default function ItemsPage() {
         </div>
       </div>
       
-      {/* 筛选器 */}
-      <ItemFilters />
+      {/* 高级搜索面板 */}
+      <AdvancedSearchPanel />
 
       {/* 批量操作栏 */}
       {selectedItemIds.length > 0 && (
