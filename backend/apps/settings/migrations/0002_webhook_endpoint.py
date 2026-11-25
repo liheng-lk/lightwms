@@ -36,7 +36,7 @@ class Migration(migrations.Migration):
                 'db_table': 'settings_webhook_endpoint',
                 'ordering': ['-created_at'],
                 'indexes': [
-                    models.Index(fields=['is_active', '-created_at']),
+                    models.Index(fields=['is_active', '-created_at'], name='settings_webhook_active_idx'),
                 ],
             },
         ),

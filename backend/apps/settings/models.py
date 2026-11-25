@@ -4,6 +4,8 @@ System settings models for LightWMS.
 from django.db import models
 from django.conf import settings
 
+from .webhook_models import WebhookEndpoint, WebhookEvent  # noqa: F401
+
 
 class SystemSettings(models.Model):
     """
